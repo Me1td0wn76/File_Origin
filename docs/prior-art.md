@@ -38,7 +38,7 @@
 
 File Origin の競合ではなく **土台**。どこまで OS が既にやってくれているかを把握しておく。
 
-### 2.1 Windows — Zone.Identifier / Mark of the Web ✅ 使える
+### 2.1 Windows — Zone.Identifier / Mark of the Web ○ 使える
 
 NTFS の代替データストリーム `<file>:Zone.Identifier` に INI 形式で書かれる。
 
@@ -56,21 +56,21 @@ HostIpAddress=203.0.113.10
 
 **評価**: Windows では OS メタデータ経路が **実用的に機能する**。File Origin の「拡張機能を入れる前のファイルの救済」はここで成立する。
 
-### 2.2 macOS — kMDItemWhereFroms ✅ 使える（今回はスコープ外）
+### 2.2 macOS — kMDItemWhereFroms ○ 使える（今回はスコープ外）
 
 `com.apple.metadata:kMDItemWhereFroms` に URL と referrer の配列が入る。plist 形式。
 将来 macOS 対応する際（D4）はここを読めばよい。
 
-### 2.3 Linux — ⚠️ **当てにならない**
+### 2.3 Linux — △ **当てにならない**
 
 freedesktop.org の [Common Extended Attributes](https://www.freedesktop.org/wiki/CommonExtendedAttributes/) に `user.xdg.origin.url` / `user.xdg.referrer.url` が **標準として定義されている**。しかし実装状況は悪い。
 
 | 実装 | 状況 |
 | --- | --- |
-| **Firefox** | ❌ xattr を書かない。代わりに **GVFS メタデータ** の `metadata::download-uri` に書く（[Bug 797349](https://bugzilla.mozilla.org/show_bug.cgi?id=797349) で実装）。xattr 対応要望の [Bug 665531](https://bugzilla.mozilla.org/show_bug.cgi?id=665531) は 10 年以上未解決 |
-| **Chrome / Chromium** | ⚠️ 一度実装したが **サポートを打ち切った** |
-| **wget --xattr** | ✅ 書く |
-| **curl --xattr** | ✅ 書く |
+| **Firefox** | × xattr を書かない。代わりに **GVFS メタデータ** の `metadata::download-uri` に書く（[Bug 797349](https://bugzilla.mozilla.org/show_bug.cgi?id=797349) で実装）。xattr 対応要望の [Bug 665531](https://bugzilla.mozilla.org/show_bug.cgi?id=665531) は 10 年以上未解決 |
+| **Chrome / Chromium** | △ 一度実装したが **サポートを打ち切った** |
+| **wget --xattr** | ○ 書く |
+| **curl --xattr** | ○ 書く |
 
 **GVFS メタデータの所在**: `~/.local/share/gvfs-metadata/main.db`（SQLite）。`gio info -a "metadata::*" <file>` で読める。
 なお [Bug 1535950](https://bugzilla.mozilla.org/show_bug.cgi?id=1535950) の通り、**プライベートブラウジング中でも記録される**という指摘がある。File Origin がこれを読む際はプライバシー上の配慮が要る。
@@ -93,10 +93,10 @@ freedesktop.org の [Common Extended Attributes](https://www.freedesktop.org/wik
 | プラットフォーム | **Windows のみ**（Windows 11 x64 / NTFS でテスト） |
 | 入手元の取得 | **Zone.Identifier ADS の読み取りのみ** |
 | インターフェース | **CLI のみ**（`wherefrom.exe` / `open` / `scan` / `debug-zone`） |
-| 移動・リネーム追跡 | ❌ **なし**（README に「file-move tracking are not available」と明記） |
-| GUI / エクスプローラ統合 | ❌ なし |
-| 永続的なデータベース | ❌ なし（都度読むだけ） |
-| ブラウザ連携 | ❌ なし |
+| 移動・リネーム追跡 | × **なし**（README に「file-move tracking are not available」と明記） |
+| GUI / エクスプローラ統合 | × なし |
+| 永続的なデータベース | × なし（都度読むだけ） |
+| ブラウザ連携 | × なし |
 | ライセンス | **MIT** |
 | 活動状況 | Star 0 / Fork 0 / コミット 11 — ごく初期段階 |
 
@@ -104,10 +104,10 @@ freedesktop.org の [Common Extended Attributes](https://www.freedesktop.org/wik
 ただし実質は **Zone.Identifier リーダー**であり、File Origin の設計で言えば **M2 相当の範囲に留まる**。
 
 > **示唆**
-> - ✅ **コンセプトの需要は裏付けられた** — 同じ問題意識を持つ人が他にもいる
-> - ✅ **差分は明確** — DB による永続化（M1）、移動追跡（M3）、ブラウザ拡張（M4）、GUI（M5）、Linux 対応のすべてが未実装
-> - ✅ **MIT なので参考にできる** — Zone.Identifier のパース実装（64 KiB の読み取り上限、BOM 検出、エンコーディング処理）は先行事例として学べる
-> - ⚠️ 名前が近い。`WhereFrom` と `File Origin` の混同を避ける意味でも、機能面での差別化を README で明示しておくのが良い
+> - ○ **コンセプトの需要は裏付けられた** — 同じ問題意識を持つ人が他にもいる
+> - ○ **差分は明確** — DB による永続化（M1）、移動追跡（M3）、ブラウザ拡張（M4）、GUI（M5）、Linux 対応のすべてが未実装
+> - ○ **MIT なので参考にできる** — Zone.Identifier のパース実装（64 KiB の読み取り上限、BOM 検出、エンコーディング処理）は先行事例として学べる
+> - △ 名前が近い。`WhereFrom` と `File Origin` の混同を避ける意味でも、機能面での差別化を README で明示しておくのが良い
 
 ---
 
@@ -210,7 +210,7 @@ https://github.com/emanuele-f/gvfs-meta-explorer — Linux で `metadata::downlo
 
 調査の結果、**README の記述に誤りが 2 件** 見つかった。いずれも修正済み。
 
-### F1. ⚠️ Linux の入手元メタデータ — 前提が崩れていた
+### F1. △ Linux の入手元メタデータ — 前提が崩れていた
 
 **誤り**: README は `user.xdg.origin.url` を「Firefox / wget --xattr / curl --xattr が書く」としていた。
 **事実**: **Firefox は xattr を書かない**（GVFS メタデータに書く）。**Chrome は実装後に撤回した**。実際に xattr を書くのは wget / curl の `--xattr` オプションくらい。
@@ -221,7 +221,7 @@ https://github.com/emanuele-f/gvfs-meta-explorer — Linux で `metadata::downlo
 - **Linux ではブラウザ拡張（M4）が必須**であることを README に明記
 - プライベートブラウジング中の記録を読む可能性があるため、GVFS 読み取りは**オプトイン**にする
 
-### F2. ⚠️ USN Change Journal — 「完全に追える」は誤り
+### F2. △ USN Change Journal — 「完全に追える」は誤り
 
 **誤り**: README は USN Journal について「停止中の変更も**完全に**追える」と書いていた。
 **事実**: 2 つの制約がある。
@@ -240,7 +240,7 @@ https://github.com/emanuele-f/gvfs-meta-explorer — Linux で `metadata::downlo
 
 **既定では両 OS とも差分スキャン**で動き、特権を与えれば精度が上がる。この方が設計方針 P4（劣化して動く）とも整合する。
 
-### F3. ✅ 中央 DB + in-place 方式は妥当
+### F3. ○ 中央 DB + in-place 方式は妥当
 
 hydrus（import 方式）と TagSpaces（サイドカー方式）を比べると、File Origin の「**in-place + 中央 SQLite**」は妥当な選択。
 
@@ -270,17 +270,17 @@ File Origin は**それらの領域の外にあるファイル**にこそ価値�
 
 | | 入手元の<br/>自動記録 | 移動<br/>追跡 | 対象 | 方式 | Win | Linux | OSS | ローカル<br/>完結 |
 | --- | :---: | :---: | --- | --- | :---: | :---: | :---: | :---: |
-| **File Origin**（目標） | ✅ | ✅ | 汎用 | in-place | ✅ | ✅ | ✅ MIT | ✅ |
-| WhereFrom | ⚠️ ADS のみ | ❌ | 汎用 | 読むだけ | ✅ | ❌ | ✅ MIT | ✅ |
-| hydrus network | ✅ | ✅ | メディア | **import** | ✅ | ✅ | ✅ | ✅ |
-| git-annex / DataLad | ✅ | ✅ | リポジトリ内 | git 管理下 | ⚠️ | ✅ | ✅ | ✅ |
-| TagSpaces | ❌ | ⚠️ | 汎用 | in-place | ✅ | ✅ | ✅ | ✅ |
-| Eagle | ✅ | ✅ | 素材 | **import** | ✅ | ❌ | ❌ | ✅ |
-| Zotero | ✅ | ✅ | 論文 | import | ✅ | ✅ | ✅ | ⚠️ |
-| Vortex / MO2 | ✅ | ✅ | Mod | import | ✅ | ⚠️ | ✅ | ⚠️ |
-| gallery-dl / yt-dlp | ✅ | ❌ | 自分の DL のみ | サイドカー | ✅ | ✅ | ✅ | ✅ |
-| ブラウザ履歴 | ✅ | ❌ | 自分の DL のみ | 履歴 DB | ✅ | ✅ | ⚠️ | ✅ |
-| OS メタデータのみ | ⚠️ | ❌ | 汎用 | ファイル付随 | ✅ | ❌ | — | ✅ |
+| **File Origin**（目標） | ○ | ○ | 汎用 | in-place | ○ | ○ | ○ MIT | ○ |
+| WhereFrom | △ ADS のみ | × | 汎用 | 読むだけ | ○ | × | ○ MIT | ○ |
+| hydrus network | ○ | ○ | メディア | **import** | ○ | ○ | ○ | ○ |
+| git-annex / DataLad | ○ | ○ | リポジトリ内 | git 管理下 | △ | ○ | ○ | ○ |
+| TagSpaces | × | △ | 汎用 | in-place | ○ | ○ | ○ | ○ |
+| Eagle | ○ | ○ | 素材 | **import** | ○ | × | × | ○ |
+| Zotero | ○ | ○ | 論文 | import | ○ | ○ | ○ | △ |
+| Vortex / MO2 | ○ | ○ | Mod | import | ○ | △ | ○ | △ |
+| gallery-dl / yt-dlp | ○ | × | 自分の DL のみ | サイドカー | ○ | ○ | ○ | ○ |
+| ブラウザ履歴 | ○ | × | 自分の DL のみ | 履歴 DB | ○ | ○ | △ | ○ |
+| OS メタデータのみ | △ | × | 汎用 | ファイル付随 | ○ | × | — | ○ |
 
 **空白地帯**: 「汎用 × in-place × 移動追跡 × Win/Linux 両対応 × OSS」を満たす行は File Origin だけ。
 
