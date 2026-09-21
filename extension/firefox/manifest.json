@@ -1,0 +1,12 @@
+{
+  "manifest_version": 2,
+  "name": "File Origin",
+  "version": "0.0.1",
+  "description": "ダウンロードしたファイルの入手元を記録します。",
+  "permissions": ["downloads", "nativeMessaging", "storage"],
+  "background": { "scripts": ["background.js"], "persistent": false },
+  "browser_action": { "default_popup": "popup.html", "default_title": "File Origin" },
+  "browser_specific_settings": {
+    "gecko": { "id": "file-origin@io.github", "strict_min_version": "115.0" }
+  }
+}

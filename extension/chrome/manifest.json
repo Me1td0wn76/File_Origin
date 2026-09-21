@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "File Origin",
+  "version": "0.0.1",
+  "description": "ダウンロードしたファイルの入手元を記録します。",
+  "permissions": ["downloads", "nativeMessaging", "storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "File Origin" }
+}

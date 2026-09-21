@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>File Origin</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 13px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; padding: 14px; width: 300px;
+  }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  .state { padding: 10px; border-radius: 6px; margin-bottom: 10px; word-break: break-word; }
+  .ok      { background: #e6f4ea; color: #12603a; }
+  .error   { background: #fce8e6; color: #8c1d18; }
+  .skipped { background: #fef7e0; color: #7a5b00; }
+  .idle    { background: #eef0f3; color: #444; }
+  @media (prefers-color-scheme: dark) {
+    .ok { background:#10361f; color:#a8e6c0 } .error { background:#3b1513; color:#f4b7b1 }
+    .skipped { background:#3a2f0b; color:#f0d58a } .idle { background:#2a2c30; color:#c7c9cc }
+  }
+  button { font: inherit; padding: 5px 10px; cursor: pointer; }
+  .hint { color: #666; font-size: 12px; margin-top: 10px; }
+  @media (prefers-color-scheme: dark) { .hint { color:#9aa0a6 } }
+</style>
+<h1>File Origin</h1>
+<div id="state" class="state idle">読み込み中…</div>
+<button id="ping">接続を確認</button>
+<div class="hint">
+  ダウンロードの入手元を自動記録します。記録には <code>fo-daemon</code> の起動が必要です。
+</div>
+<script src="popup.js"></script>
