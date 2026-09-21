@@ -51,9 +51,7 @@ enum Command {
     },
 
     /// ファイルの来歴を表示する
-    Show {
-        path: PathBuf,
-    },
+    Show { path: PathBuf },
 
     /// 記録の統計を表示する
     Stats,
@@ -71,21 +69,23 @@ fn main() -> Result<()> {
     }
 
     let db_path = cli.db.unwrap_or_else(|| platform.paths().database_path());
-    let store = Store::open(&db_path)
-        .with_context(|| format!("DB を開けません: {}", db_path.display()))?;
+    let store =
+        Store::open(&db_path).with_context(|| format!("DB を開けません: {}", db_path.display()))?;
 
     match cli.command {
         Command::Doctor => unreachable!("上で処理済み"),
 
-        Command::Scan { path, hash, no_recursive } => {
+        Command::Scan {
+            path,
+            hash,
+            no_recursive,
+        } => {
             let roots = match path {
                 Some(p) => vec![p],
                 None => platform.paths().default_download_dirs(),
             };
             if roots.is_empty() {
-                anyhow::bail!(
-                    "走査対象が見つかりません。パスを明示してください: fo scan <path>"
-                );
+                anyhow::bail!("走査対象が見つかりません。パスを明示してください: fo scan <path>");
             }
             for root in roots {
                 scan::run(platform.as_ref(), &store, &root, hash, !no_recursive)?;
