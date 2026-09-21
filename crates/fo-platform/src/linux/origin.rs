@@ -30,13 +30,17 @@ pub struct LinuxOriginMetadata {
 
 impl LinuxOriginMetadata {
     pub fn new() -> Self {
-        Self { gvfs_enabled: false }
+        Self {
+            gvfs_enabled: false,
+        }
     }
 
     // TODO(M2): 設定から読んで有効化する経路を繋ぐ。それまで呼び出し元が無い。
     #[allow(dead_code)]
     pub fn with_gvfs(enabled: bool) -> Self {
-        Self { gvfs_enabled: enabled }
+        Self {
+            gvfs_enabled: enabled,
+        }
     }
 }
 
