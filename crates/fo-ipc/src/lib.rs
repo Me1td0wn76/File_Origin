@@ -101,24 +101,6 @@ pub struct DaemonStatus {
     pub watching: bool,
 }
 
-/// 1 行 1 メッセージで読み書きする接続。
-///
-/// `BufReader` を挟むのは、1 バイトずつ読むと IPC では極端に遅いため。
-pub struct Connection<S> {
-    reader: BufReader<S>,
-}
-
-impl<S: std::io::Read + Write> Connection<S> {
-    pub fn new(stream: S) -> Self
-    where
-        S: Clone,
-    {
-        Self {
-            reader: BufReader::new(stream),
-        }
-    }
-}
-
 /// メッセージを 1 件書く。
 pub fn write_message<W: Write, T: Serialize>(w: &mut W, msg: &T) -> Result<()> {
     serde_json::to_writer(&mut *w, msg)?;
