@@ -8,6 +8,10 @@ Cargo.lock.orig
 # 「frontendDist が存在しない」で落ちた。
 /gui/node_modules
 /gui/src-tauri/target
+# gen/ は tauri-build が capabilities/ と tauri.conf.json から毎回作る生成物。
+# 追跡するとビルドのたびに差分が出る。クリーンチェックアウトでも
+# build.rs が作り直すので、無くてもビルドは通る（確認済み）。
+/gui/src-tauri/gen
 
 # 拡張機能 (M4)
 /extension/**/node_modules

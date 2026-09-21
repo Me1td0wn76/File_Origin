@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"メインウィンドウに必要な最小限の権限。ファイルの読み書きやシェル実行は与えない。","local":true,"windows":["main"],"permissions":["core:default"]}}
