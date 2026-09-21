@@ -167,7 +167,10 @@ fn initial_scan(d: &Daemon) -> Result<()> {
             }
         });
         match res {
-            Ok(_) => eprintln!("  起動時スキャン {}: 新規 {new} / 移動 {moved}", root.display()),
+            Ok(_) => eprintln!(
+                "  起動時スキャン {}: 新規 {new} / 移動 {moved}",
+                root.display()
+            ),
             Err(e) => eprintln!("  起動時スキャン {} を飛ばしました: {e}", root.display()),
         }
     }
