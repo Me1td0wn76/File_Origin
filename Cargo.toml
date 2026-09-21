@@ -4,8 +4,10 @@ members = [
     "crates/fo-core",
     "crates/fo-platform",
     "crates/fo-store",
+    "crates/fo-ipc",
     "crates/fo-app",
     "crates/fo-cli",
+    "crates/fo-daemon",
 ]
 
 [workspace.package]
@@ -22,6 +24,7 @@ fo-core     = { path = "crates/fo-core" }
 fo-platform = { path = "crates/fo-platform" }
 fo-store    = { path = "crates/fo-store" }
 fo-app      = { path = "crates/fo-app" }
+fo-ipc      = { path = "crates/fo-ipc" }
 
 anyhow     = "1"
 thiserror  = "1"
@@ -31,6 +34,11 @@ clap       = { version = "4", features = ["derive"] }
 sha2       = "0.10"
 rusqlite   = { version = "0.32", features = ["bundled"] }
 chrono     = "0.4"
+# ファイル監視。OS 差（ReadDirectoryChangesW / inotify）を内包するが、
+# fo-platform の FsWatcher trait の裏に隠す（ADR-0003）。
+notify     = "7"
+# ローカル IPC。Windows は名前付きパイプ、Unix はドメインソケットに写る。
+interprocess = "2"
 
 # --- OS 固有クレート ---------------------------------------------------
 # これらを依存に書いてよいのは fo-platform だけ。
