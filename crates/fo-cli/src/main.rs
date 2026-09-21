@@ -102,6 +102,16 @@ enum Command {
         /// 最大件数。0 で無制限
         #[arg(long, default_value_t = 50)]
         limit: usize,
+
+        /// 並べ替えの項目
+        /// （first-seen / acquired / name / size / confidence）
+        #[arg(long, default_value = "first-seen")]
+        sort: String,
+
+        /// 昇順にする。既定は項目ごとの自然な向き
+        /// （日時・サイズ・確度は降順、名前は昇順）
+        #[arg(long)]
+        asc: bool,
     },
 
     /// ファイルの現在地を引く（ファイル名の一部、または SHA-256）
@@ -248,6 +258,8 @@ fn run() -> Result<()> {
             since,
             until,
             limit,
+            sort,
+            asc,
         } => search::run(
             &store,
             search::Args {
@@ -257,6 +269,8 @@ fn run() -> Result<()> {
                 since,
                 until,
                 limit,
+                sort,
+                asc,
             },
         )?,
 
