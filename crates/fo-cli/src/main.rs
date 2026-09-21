@@ -6,6 +6,7 @@
 
 mod doctor;
 mod scan;
+mod search;
 mod show;
 
 use std::path::PathBuf;
@@ -68,6 +69,36 @@ enum Command {
 
     /// ファイルの来歴を表示する
     Show { path: PathBuf },
+
+    /// 記録を検索する（条件はすべて AND）
+    Search {
+        /// ファイル名。`*` `?` が使える。ワイルドカード無しなら部分一致
+        #[arg(long)]
+        name: Option<String>,
+
+        /// 入手元 URL または参照元 URL に含まれる文字列
+        #[arg(long)]
+        url: Option<String>,
+
+        /// 入手元のホスト名。サブドメインも当たる（example.com は cdn.example.com に一致）
+        #[arg(long)]
+        host: Option<String>,
+
+        /// 取得日がこの日以降（YYYY-MM-DD、含む）
+        #[arg(long)]
+        since: Option<String>,
+
+        /// 取得日がこの日まで（YYYY-MM-DD、含む）
+        #[arg(long)]
+        until: Option<String>,
+
+        /// 最大件数。0 で無制限
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+
+    /// ファイルの現在地を引く（ファイル名の一部、または SHA-256）
+    Where { query: String },
 
     /// 記録の統計を表示する
     Stats,
@@ -138,6 +169,27 @@ fn main() -> Result<()> {
         }
 
         Command::Show { path } => show::run(platform.as_ref(), &store, &path)?,
+
+        Command::Search {
+            name,
+            url,
+            host,
+            since,
+            until,
+            limit,
+        } => search::run(
+            &store,
+            search::Args {
+                name,
+                url,
+                host,
+                since,
+                until,
+                limit,
+            },
+        )?,
+
+        Command::Where { query } => search::locate(&store, &query)?,
 
         Command::Stats => {
             println!("記録済みファイル : {}", store.count_files()?);

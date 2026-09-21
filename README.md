@@ -578,10 +578,12 @@ CREATE TABLE file_paths (
     id          INTEGER PRIMARY KEY,
     file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     path        TEXT    NOT NULL,
+    name        TEXT,                 -- ベース名。名前検索用（0002 で追加）
     is_current  INTEGER NOT NULL,     -- 0 | 1
     observed_at INTEGER NOT NULL
 );
 CREATE INDEX idx_paths_path    ON file_paths(path);
+CREATE INDEX idx_paths_name    ON file_paths(name);
 CREATE INDEX idx_paths_current ON file_paths(file_id, is_current);
 
 -- 入手元（1 ファイルに複数ありうる）
@@ -638,9 +640,17 @@ CREATE TABLE journal_state (
     updated_at INTEGER NOT NULL
 );
 
--- 全文検索（ファイル名・URL・メモ）
-CREATE VIRTUAL TABLE search_index USING fts5(name, url, note, content='');
+-- 全文検索（ファイル名・URL・メモ）— 未導入。§ 検索 を参照
+-- CREATE VIRTUAL TABLE search_index USING fts5(name, url, note, content='');
 ```
+
+### 検索
+
+M1 の検索は **`LIKE` と索引** で行う。数万件規模の個人 DB には十分で、FTS5 の contentless テーブルを同期し続ける手間（トリガーか明示的な二重書き）に見合わない。メモ本文を検索したくなった時点で FTS5 を検討する。
+
+- **ファイル名は過去の名前も当てる。** `file_paths` の全行を対象にするので、`setup.zip` を `installer.zip` にリネームした後でも `--name setup` で引ける。表示は現在のパス
+- ホストはサブドメインも当てる（`example.com` は `cdn.example.com` に一致）
+- 日付範囲は取得日時（`origins.acquired_at`）を見る。無ければ最初に見た日時（`files.first_seen_at`）で代用
 
 ### 設計上のポイント
 
@@ -676,9 +686,10 @@ CREATE VIRTUAL TABLE search_index USING fts5(name, url, note, content='');
 fo scan ~/Downloads                 # 既存ファイルを取り込む（OS メタデータも読む）
 fo add <path> --url <url>           # 手動で入手元を登録
 fo show <path>                      # 来歴を表示
-fo search --url example.com         # 入手元で検索
-fo search --name "setup*"           # ファイル名で検索
-fo search --since 2026-01-01        # 取得日時で検索
+fo search --url example.com         # 入手元 URL / 参照元 URL の部分一致
+fo search --host example.com        # ホスト名（サブドメインも当たる）
+fo search --name "setup*"           # ファイル名。過去の名前も当たる。ワイルドカード無しなら部分一致
+fo search --since 2026-01-01 --until 2026-01-31   # 取得日（両端含む）
 fo where <sha256|name>              # 現在の保存場所を解決
 fo verify                           # 実体と DB の突き合わせ
 fo rescan                           # 取りこぼしの補正
@@ -830,6 +841,8 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 - パス履歴が `file_paths` に残る（旧パスは `is_current = 0`）
 - `fo show` がパス履歴・コピー元・コピー元から継承した入手元を表示する
 - `fo add --url` で手動登録。未記録のファイルは同時に取り込む。Zone.Identifier の記録とは別行で積まれる
+- `fo search` が名前（過去の名前含む）・URL・ホスト・日付範囲で引ける。`fo where` はファイル名か SHA-256 から現在地を返す
+- 0001 で作った DB を開くと 0002（`name` 列）が自動適用され、既存行が埋め戻される
 
 **Linux は CI（ubuntu-latest）でビルド・テスト・`fo doctor` まで確認済み。** 実ファイルでの `fo scan` はまだ誰も回していない。
 
@@ -914,7 +927,7 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
-| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `stats`<br/>両 OS で CI 通過<br/>**残: 検索** | `fo` コマンドが動く |
+| **M1** コア + CLI | ○ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `search` / `where` / `stats`<br/>両 OS で CI 通過 | ○ `fo` コマンドが動く |
 | **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
 | **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |

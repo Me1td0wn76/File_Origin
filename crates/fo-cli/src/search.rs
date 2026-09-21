@@ -1,0 +1,143 @@
+//! `fo search` / `fo where` — 一覧表示。条件の解釈と検索は `fo_app::search` にある。
+
+use anyhow::{bail, Result};
+use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use fo_core::model::{FileStatus, SearchHit, SearchQuery};
+use fo_store::Store;
+
+pub struct Args {
+    pub name: Option<String>,
+    pub url: Option<String>,
+    pub host: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub limit: usize,
+}
+
+pub fn run(store: &Store, args: Args) -> Result<()> {
+    let q = SearchQuery {
+        name: args.name,
+        url: args.url,
+        host: args.host,
+        since: args.since.as_deref().map(parse_day_start).transpose()?,
+        // --until は「その日まで（含む）」と読む方が自然なので、翌日 0 時を未満で使う。
+        until: args
+            .until
+            .as_deref()
+            .map(parse_next_day_start)
+            .transpose()?,
+        sha256: None,
+        limit: args.limit,
+    };
+    let hits = fo_app::search(store, q)?;
+    print_hits(&hits, args.limit);
+    Ok(())
+}
+
+pub fn locate(store: &Store, query: &str) -> Result<()> {
+    let hits = fo_app::locate(store, query)?;
+    if hits.is_empty() {
+        println!("見つかりません: {query}");
+        println!("ファイル名の一部か、SHA-256（64 桁）で指定してください。");
+        return Ok(());
+    }
+    print_hits(&hits, 0);
+    Ok(())
+}
+
+fn print_hits(hits: &[SearchHit], limit: usize) {
+    if hits.is_empty() {
+        println!("該当なし");
+        return;
+    }
+    for h in hits {
+        let status = match h.record.status {
+            FileStatus::Present => "",
+            FileStatus::Missing => "  [見失い中]",
+            FileStatus::Deleted => "  [削除済み]",
+        };
+        println!("{}{}", h.record.current_path.display(), status);
+        match &h.best_origin {
+            Some(o) => {
+                let when = o.acquired_at.map(fmt_day).unwrap_or_default();
+                println!(
+                    "    [{}] {}{}",
+                    o.confidence.as_str(),
+                    o.url.as_deref().unwrap_or("(URL なし)"),
+                    if when.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  ({when})")
+                    }
+                );
+            }
+            None => println!("    入手元: 記録なし"),
+        }
+    }
+    println!();
+    if limit > 0 && hits.len() >= limit {
+        println!("{} 件（上限）。--limit で増やせます。", hits.len());
+    } else {
+        println!("{} 件", hits.len());
+    }
+}
+
+/// `YYYY-MM-DD` をローカル時刻のその日 0 時として Unix 秒に。
+fn parse_day_start(s: &str) -> Result<i64> {
+    let day = parse_date(s)?;
+    local_midnight(day)
+}
+
+fn parse_next_day_start(s: &str) -> Result<i64> {
+    let day = parse_date(s)?;
+    let next = day
+        .succ_opt()
+        .ok_or_else(|| anyhow::anyhow!("日付が範囲外です: {s}"))?;
+    local_midnight(next)
+}
+
+fn parse_date(s: &str) -> Result<NaiveDate> {
+    match NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        Ok(d) => Ok(d),
+        Err(_) => bail!("日付は YYYY-MM-DD で指定してください: {s}"),
+    }
+}
+
+fn local_midnight(day: NaiveDate) -> Result<i64> {
+    let naive = day
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(|| anyhow::anyhow!("日付が範囲外です"))?;
+    // 夏時間の切り替えで 0 時が存在しない日は、存在する最も早い時刻に寄せる。
+    Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .map(|t| t.timestamp())
+        .ok_or_else(|| anyhow::anyhow!("ローカル時刻に変換できません: {day}"))
+}
+
+fn fmt_day(ts: i64) -> String {
+    if ts <= 0 {
+        return String::new();
+    }
+    DateTime::from_timestamp(ts, 0)
+        .map(|t| t.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn until_is_inclusive_of_the_day() {
+        let start = parse_day_start("2026-09-21").unwrap();
+        let end = parse_next_day_start("2026-09-21").unwrap();
+        assert_eq!(end - start, 24 * 60 * 60);
+    }
+
+    #[test]
+    fn rejects_bad_dates() {
+        assert!(parse_date("2026/09/21").is_err());
+        assert!(parse_date("yesterday").is_err());
+    }
+}

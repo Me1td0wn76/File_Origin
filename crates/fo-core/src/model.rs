@@ -176,6 +176,35 @@ pub struct PathEntry {
     pub observed_at: i64,
 }
 
+/// 検索条件。指定した項目はすべて AND で結ばれる。
+///
+/// 日時は Unix 秒で受ける。「2026-09-21」をどう解釈するか（ローカル時刻の 0 時か、
+/// その日の終わりか）は UI の責任で、ここでは決めない。
+#[derive(Debug, Clone, Default)]
+pub struct SearchQuery {
+    /// ファイル名（ベース名）の glob。`*` と `?` が使える。
+    pub name: Option<String>,
+    /// 入手元 URL または参照元 URL に含まれる文字列。
+    pub url: Option<String>,
+    /// 入手元のホスト名。完全一致か、サブドメイン（`cdn.example.com` は `example.com` に当たる）。
+    pub host: Option<String>,
+    /// 取得日時がこれ以降（含む）。取得日時が無ければ最初に見た日時で代用する。
+    pub since: Option<i64>,
+    /// 取得日時がこれより前（含まない）。
+    pub until: Option<i64>,
+    pub sha256: Option<Digest>,
+    /// 0 なら無制限。
+    pub limit: usize,
+}
+
+/// 検索結果 1 件。
+#[derive(Debug, Clone)]
+pub struct SearchHit {
+    pub record: FileRecord,
+    /// 確度が最も高い入手元。無ければ `None`。
+    pub best_origin: Option<Origin>,
+}
+
 /// 追跡対象ファイル 1 件。
 #[derive(Debug, Clone)]
 pub struct FileRecord {

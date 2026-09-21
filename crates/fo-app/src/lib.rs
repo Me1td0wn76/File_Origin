@@ -16,11 +16,13 @@ pub mod describe;
 pub mod ingest;
 pub mod manual;
 pub mod scan;
+pub mod search;
 
 pub use describe::{describe, Description};
 pub use ingest::{ingest_file, IngestOptions, Ingested};
 pub use manual::add_manual_origin;
 pub use scan::{scan_dir, ScanEvent, ScanOptions};
+pub use search::{locate, search};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

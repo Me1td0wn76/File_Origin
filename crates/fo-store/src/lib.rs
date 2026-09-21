@@ -8,7 +8,10 @@
 
 use std::path::{Path, PathBuf};
 
-use fo_core::model::{Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource, PathEntry};
+use fo_core::model::{
+    Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource, PathEntry, SearchHit,
+    SearchQuery,
+};
 use fo_platform::{FileKey, StableFileId, VolumeId};
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -31,7 +34,13 @@ pub enum Error {
 
 /// マイグレーション。追加するときは末尾に足し、既存を書き換えない。
 /// 既に適用済みの DB を壊さないため。
-const MIGRATIONS: &[(&str, &str)] = &[("0001_init", include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_init", include_str!("../migrations/0001_init.sql")),
+    (
+        "0002_path_name",
+        include_str!("../migrations/0002_path_name.sql"),
+    ),
+];
 
 pub struct Store {
     conn: Connection,
@@ -91,6 +100,29 @@ impl Store {
                     params![name, now()],
                 )?;
             }
+        }
+        // SQL だけでは埋められない列を Rust 側で補う。冪等なので毎回呼んでよい。
+        self.backfill_path_names()?;
+        Ok(())
+    }
+
+    /// `file_paths.name` が NULL の行にベース名を入れる（0002 の埋め戻し）。
+    /// パス区切りが OS 依存なので SQL ではなく `Path::file_name` で切る。
+    fn backfill_path_names(&self) -> Result<()> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, path FROM file_paths WHERE name IS NULL")?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        drop(stmt);
+
+        for (id, path) in rows {
+            let name = basename(Path::new(&path));
+            self.conn.execute(
+                "UPDATE file_paths SET name = ?1 WHERE id = ?2",
+                params![name, id],
+            )?;
         }
         Ok(())
     }
@@ -216,11 +248,75 @@ impl Store {
             params![file_id],
         )?;
         self.conn.execute(
-            "INSERT INTO file_paths (file_id, path, is_current, observed_at)
-             VALUES (?1, ?2, 1, ?3)",
-            params![file_id, path.to_string_lossy(), now()],
+            "INSERT INTO file_paths (file_id, path, name, is_current, observed_at)
+             VALUES (?1, ?2, ?3, 1, ?4)",
+            params![file_id, path.to_string_lossy(), basename(path), now()],
         )?;
         Ok(())
+    }
+
+    /// 条件に合うファイルを、最初に見た日時の新しい順に返す。
+    ///
+    /// SQL は固定で、指定の無い条件は `:x IS NULL` で素通しにする。
+    /// 動的に組み立てないのは、条件の組み合わせごとにテストしなくて済むようにするため。
+    ///
+    /// ファイル名は **過去の名前も含めて** 当てる。「昔 setup.zip だったあれはどこ？」に
+    /// 答えるのがこのツールの約束で、リネーム後の名前しか引けないなら履歴を持つ意味がない。
+    /// 表示するパスは現在のもの。
+    pub fn search(&self, q: &SearchQuery) -> Result<Vec<SearchHit>> {
+        let name_like = q.name.as_deref().map(glob_to_like);
+        let url_like = q.url.as_deref().map(|u| format!("%{}%", escape_like(u)));
+        let host = q.host.as_deref().map(str::to_ascii_lowercase);
+        let host_sub = host.as_deref().map(|h| format!("%.{}", escape_like(h)));
+        let limit = if q.limit == 0 { -1 } else { q.limit as i64 };
+
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT
+                    f.id, f.volume_id, f.file_key, f.size, f.sha256, f.mtime,
+                    f.status, f.derived_from, p.path, f.first_seen_at
+             FROM files f
+             JOIN file_paths p ON p.file_id = f.id AND p.is_current = 1
+             LEFT JOIN origins o ON o.file_id = f.id
+             WHERE (:name IS NULL OR EXISTS (
+                        SELECT 1 FROM file_paths ph
+                        WHERE ph.file_id = f.id AND ph.name LIKE :name ESCAPE '!'))
+               AND (:url  IS NULL OR o.url LIKE :url ESCAPE '!'
+                                  OR o.referrer_url LIKE :url ESCAPE '!')
+               AND (:host IS NULL OR o.host = :host OR o.host LIKE :host_sub ESCAPE '!')
+               AND (:since IS NULL OR COALESCE(o.acquired_at, f.first_seen_at) >= :since)
+               AND (:until IS NULL OR COALESCE(o.acquired_at, f.first_seen_at) <  :until)
+               AND (:sha  IS NULL OR f.sha256 = :sha)
+             ORDER BY f.first_seen_at DESC, f.id DESC
+             LIMIT :limit",
+        )?;
+
+        let rows = stmt.query_map(
+            rusqlite::named_params! {
+                ":name": name_like,
+                ":url": url_like,
+                ":host": host,
+                ":host_sub": host_sub,
+                ":since": q.since,
+                ":until": q.until,
+                ":sha": q.sha256.as_ref().map(|d| d.as_str()),
+                ":limit": limit,
+            },
+            row_to_file,
+        )?;
+        let records: Vec<FileRecord> = rows
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .collect::<Result<_>>()?;
+
+        let mut hits = Vec::with_capacity(records.len());
+        for record in records {
+            let best_origin = self.origins_of(record.id)?.into_iter().next();
+            hits.push(SearchHit {
+                record,
+                best_origin,
+            });
+        }
+        Ok(hits)
     }
 
     /// 入手元を 1 件積む。既存の行は上書きしない。
@@ -392,6 +488,49 @@ fn parse_confidence(s: &str) -> Result<Confidence> {
     })
 }
 
+/// パスからベース名を取る。取れなければパス全体（ルートなど）。
+fn basename(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+/// SQL `LIKE ... ESCAPE` のエスケープ文字。
+///
+/// バックスラッシュにしないのは、Windows のパスやファイル名に普通に含まれるため。
+/// `!` はファイル名にも URL にもほぼ現れず、現れても正しくエスケープされる。
+const LIKE_ESCAPE: char = '!';
+
+/// glob（`*` `?`）を SQL LIKE（`%` `_`）に変換する。
+/// LIKE のメタ文字 `%` `_` と、エスケープ文字自身はエスケープする。
+fn glob_to_like(glob: &str) -> String {
+    let mut out = String::with_capacity(glob.len() + 4);
+    for c in glob.chars() {
+        match c {
+            '*' => out.push('%'),
+            '?' => out.push('_'),
+            '%' | '_' | LIKE_ESCAPE => {
+                out.push(LIKE_ESCAPE);
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// LIKE の中に部分文字列として埋め込むための最小限のエスケープ。
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        if matches!(c, '%' | '_' | LIKE_ESCAPE) {
+            out.push(LIKE_ESCAPE);
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -416,6 +555,224 @@ mod tests {
         // 2 回目の migrate() で落ちないこと。
         store.migrate().unwrap();
         assert_eq!(store.count_files().unwrap(), 0);
+    }
+
+    #[test]
+    fn glob_translates_to_like() {
+        assert_eq!(glob_to_like("setup*"), "setup%");
+        assert_eq!(glob_to_like("a?c"), "a_c");
+        // LIKE のメタ文字はエスケープされる
+        assert_eq!(glob_to_like("100%_off"), "100!%!_off");
+        // バックスラッシュは Windows のパスに出るので素通し
+        assert_eq!(glob_to_like(r"a\b"), r"a\b");
+    }
+
+    #[test]
+    fn backfill_fills_missing_names() {
+        let store = Store::open_in_memory().unwrap();
+        let file_id = store
+            .insert_file(&sid("v", "k"), Path::new("/dl/setup.zip"), 1, None, 0, None)
+            .unwrap();
+        // 0002 適用前の DB を再現する
+        store
+            .conn
+            .execute("UPDATE file_paths SET name = NULL", [])
+            .unwrap();
+        store.backfill_path_names().unwrap();
+
+        let name: String = store
+            .conn
+            .query_row(
+                "SELECT name FROM file_paths WHERE file_id = ?1",
+                params![file_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "setup.zip");
+    }
+
+    /// 検索テスト用の DB。3 ファイル・入手元つき。
+    fn seeded() -> Store {
+        let store = Store::open_in_memory().unwrap();
+        let mk =
+            |v: &str, path: &str, url: Option<&str>, host: Option<&str>, acquired: Option<i64>| {
+                let id = store
+                    .insert_file(&sid(v, v), Path::new(path), 1, None, 0, None)
+                    .unwrap();
+                if let Some(u) = url {
+                    store
+                        .add_origin(
+                            id,
+                            &Origin {
+                                url: Some(u.into()),
+                                referrer_url: Some("https://ref.example/page".into()),
+                                host: host.map(str::to_string),
+                                acquired_at: acquired,
+                                source: OriginSource::ZoneIdentifier,
+                                confidence: Confidence::High,
+                                browser: None,
+                                profile: None,
+                            },
+                        )
+                        .unwrap();
+                }
+                id
+            };
+        mk(
+            "a",
+            "/dl/setup.zip",
+            Some("https://cdn.example.com/setup.zip"),
+            Some("cdn.example.com"),
+            Some(1_000),
+        );
+        mk(
+            "b",
+            "/dl/tool.exe",
+            Some("https://other.net/tool.exe"),
+            Some("other.net"),
+            Some(2_000),
+        );
+        mk("c", "/dl/setup-notes.txt", None, None, None);
+        store
+    }
+
+    #[test]
+    fn search_by_name_glob() {
+        let store = seeded();
+        let q = SearchQuery {
+            name: Some("setup*".into()),
+            ..Default::default()
+        };
+        let hits = store.search(&q).unwrap();
+        let mut names: Vec<String> = hits
+            .iter()
+            .map(|h| {
+                h.record
+                    .current_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        // 入手元の無いファイルも名前で引ける（LEFT JOIN）
+        assert_eq!(names, vec!["setup-notes.txt", "setup.zip"]);
+    }
+
+    #[test]
+    fn search_by_name_matches_past_names() {
+        let store = seeded();
+        // setup.zip をリネームする。現在の名前は installer.zip になる。
+        let id = store
+            .find_by_path(Path::new("/dl/setup.zip"))
+            .unwrap()
+            .unwrap()
+            .id;
+        store
+            .record_path(id, Path::new("/apps/installer.zip"))
+            .unwrap();
+
+        // 昔の名前で引けて、表示は現在のパス。
+        let hits = store
+            .search(&SearchQuery {
+                name: Some("setup.zip".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].record.current_path,
+            PathBuf::from("/apps/installer.zip")
+        );
+
+        // 新しい名前でも当然引ける。
+        let hits = store
+            .search(&SearchQuery {
+                name: Some("installer*".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn search_by_url_substring_and_host_subdomain() {
+        let store = seeded();
+        let by_url = store
+            .search(&SearchQuery {
+                url: Some("other.net".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_url.len(), 1);
+        assert!(by_url[0].record.current_path.ends_with("tool.exe"));
+
+        // cdn.example.com は example.com のサブドメインとして当たる
+        let by_host = store
+            .search(&SearchQuery {
+                host: Some("example.com".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_host.len(), 1);
+        assert!(by_host[0].record.current_path.ends_with("setup.zip"));
+        assert_eq!(
+            by_host[0]
+                .best_origin
+                .as_ref()
+                .and_then(|o| o.url.clone())
+                .as_deref(),
+            Some("https://cdn.example.com/setup.zip")
+        );
+    }
+
+    #[test]
+    fn search_by_acquired_range_and_combined() {
+        let store = seeded();
+        // 1500 以降 → tool.exe（2000）だけ。setup-notes は acquired が無いので
+        // first_seen_at（now）で代用され、範囲外になる…わけではなく now は 1500 より大きい。
+        // よって since=1500 では tool.exe と setup-notes の 2 件。
+        let since = store
+            .search(&SearchQuery {
+                since: Some(1_500),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(since.len(), 2);
+
+        // until=1500 → setup.zip（1000）だけ
+        let until = store
+            .search(&SearchQuery {
+                until: Some(1_500),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(until.len(), 1);
+        assert!(until[0].record.current_path.ends_with("setup.zip"));
+
+        // 条件は AND: name=setup* かつ host=example.com → setup.zip だけ
+        let both = store
+            .search(&SearchQuery {
+                name: Some("setup*".into()),
+                host: Some("example.com".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(both.len(), 1);
+    }
+
+    #[test]
+    fn search_limit_and_no_filter() {
+        let store = seeded();
+        assert_eq!(store.search(&SearchQuery::default()).unwrap().len(), 3);
+        let limited = store
+            .search(&SearchQuery {
+                limit: 2,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(limited.len(), 2);
     }
 
     #[test]
