@@ -84,6 +84,11 @@ pub fn ingest_file(
                     store.set_sha256(file_id, d)?;
                 }
             }
+            // 見失い中だったものが見つかった。監視が移動の前半だけ拾って
+            // missing にしたあと、後半で戻ってくる経路がこれ。
+            if rec.is_some_and(|r| r.status != fo_core::FileStatus::Present) {
+                store.mark_present(file_id)?;
+            }
             file_id
         }
 
@@ -91,6 +96,7 @@ pub fn ingest_file(
             // 別ボリュームへの移動。識別子が変わったので差し替える。
             store.update_stable_id(*file_id, &stable_id)?;
             store.record_path(*file_id, path)?;
+            store.mark_present(*file_id)?;
             *file_id
         }
 
