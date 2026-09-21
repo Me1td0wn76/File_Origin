@@ -11,9 +11,22 @@ const $ = (id) => document.getElementById(id);
 const els = {
   q: $("q"), qhost: $("qhost"), results: $("results"), count: $("count"),
   detail: $("detail"), toast: $("toast"),
+  sortKey: $("sort-key"), sortDir: $("sort-dir"),
 };
 
 let selectedId = null;
+
+/** 並び順。選択は localStorage に覚えさせる。 */
+let sort = { key: "first-seen", descending: true };
+
+/** 並べ替えの項目の表示名。キーの一覧は Rust 側（sort_options）が持つ。 */
+const SORT_LABEL = {
+  "first-seen": "取り込み順",
+  acquired: "取得日時",
+  name: "ファイル名",
+  size: "サイズ",
+  confidence: "確度",
+};
 
 // --- 表示ヘルパ -------------------------------------------------------------
 
@@ -78,6 +91,8 @@ async function runSearch() {
       host: els.qhost.value || null,
       url: null,
       limit: 300,
+      sort: sort.key,
+      descending: sort.descending,
     });
     renderList(hits);
   } catch (e) {
@@ -224,7 +239,9 @@ $("dlg-scan").addEventListener("close", async (e) => {
   toast("取り込み中…");
   try {
     toast(await invoke("scan", { path, hash: $("scan-hash").checked }));
-    runSearch();
+    // 並べ替えの選択肢を先に用意してから検索する。
+// 先に検索すると、保存済みの並びが反映されないまま一瞬既定で描画される。
+setupSort().then(runSearch);
   } catch (err) {
     toast(`取り込めません: ${err}`);
   }
@@ -257,6 +274,83 @@ $("btn-status").addEventListener("click", async () => {
 });
 
 // --- 起動 -------------------------------------------------------------------
+
+// --- 並べ替え ---------------------------------------------------------------
+
+/** 向きのボタンの文字。何順なのかが一目で分かる言葉にする。 */
+function dirLabel() {
+  if (sort.key === "name") return sort.descending ? "Z → A" : "A → Z";
+  if (sort.key === "size") return sort.descending ? "大 → 小" : "小 → 大";
+  if (sort.key === "confidence") return sort.descending ? "高 → 低" : "低 → 高";
+  return sort.descending ? "新 → 旧" : "旧 → 新";
+}
+
+function renderSortUi() {
+  els.sortKey.value = sort.key;
+  els.sortDir.textContent = dirLabel();
+}
+
+function saveSort() {
+  // 記録できなくても検索は動く。失敗させない。
+  try {
+    localStorage.setItem("fo.sort", JSON.stringify(sort));
+  } catch (_) { /* プライベートウィンドウ相当の環境でも動くように */ }
+}
+
+function loadSort(options) {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem("fo.sort") || "null");
+  } catch (_) { /* 壊れていたら既定に戻す */ }
+
+  const known = options.find((o) => o.key === (saved && saved.key));
+  if (known) {
+    sort = {
+      key: known.key,
+      descending:
+        typeof saved.descending === "boolean" ? saved.descending : known.default_descending,
+    };
+  }
+}
+
+async function setupSort() {
+  let options;
+  try {
+    options = await invoke("sort_options");
+  } catch (e) {
+    // 並べ替えが使えなくても一覧は出す。
+    els.sortKey.parentElement.hidden = true;
+    els.sortDir.hidden = true;
+    return;
+  }
+
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o.key;
+    opt.textContent = SORT_LABEL[o.key] || o.key;
+    els.sortKey.appendChild(opt);
+  }
+
+  loadSort(options);
+  renderSortUi();
+
+  els.sortKey.addEventListener("change", () => {
+    const chosen = options.find((o) => o.key === els.sortKey.value);
+    // 項目を変えたら、その項目の自然な向きに戻す。
+    // 名前順に切り替えたときに Z から始まると使いにくい。
+    sort = { key: chosen.key, descending: chosen.default_descending };
+    renderSortUi();
+    saveSort();
+    runSearch();
+  });
+
+  els.sortDir.addEventListener("click", () => {
+    sort.descending = !sort.descending;
+    renderSortUi();
+    saveSort();
+    runSearch();
+  });
+}
 
 els.q.addEventListener("input", scheduleSearch);
 els.qhost.addEventListener("input", scheduleSearch);

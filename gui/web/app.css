@@ -105,7 +105,24 @@ main {
 }
 
 .list { border-right: 1px solid var(--line); overflow-y: auto; min-height: 0; }
-.count { padding: 8px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+
+/* 件数と並べ替えを 1 行に収める。一覧の上端に留まるので sticky にする。 */
+.listbar {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.count { color: var(--muted); font-size: 12px; flex: 1 1 auto; min-width: 0; }
+.sort { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.sort select {
+  font: inherit; font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--panel); color: inherit;
+}
+button.small { padding: 2px 8px; font-size: 12px; line-height: 1.5; }
 
 #results { list-style: none; margin: 0; padding: 0; }
 #results li {

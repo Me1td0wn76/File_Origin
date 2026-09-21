@@ -21,7 +21,14 @@
 
 <main>
   <section class="list" aria-label="検索結果">
-    <div id="count" class="count">読み込み中…</div>
+    <div class="listbar">
+      <span id="count" class="count">読み込み中…</span>
+      <label class="sort">
+        並び
+        <select id="sort-key"></select>
+      </label>
+      <button id="sort-dir" class="ghost small" title="並び順を反転する" aria-live="polite"></button>
+    </div>
     <ul id="results"></ul>
   </section>
 
