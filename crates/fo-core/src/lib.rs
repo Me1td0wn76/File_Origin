@@ -10,4 +10,4 @@ pub mod identity;
 pub mod model;
 
 pub use identity::{classify, Observed, Verdict};
-pub use model::{Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource};
+pub use model::{Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource, PathEntry};
