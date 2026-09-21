@@ -191,6 +191,16 @@ pub trait PlatformPaths {
     fn database_path(&self) -> PathBuf {
         self.data_dir().join("file_origin.db")
     }
+
+    /// パスを正規化する。DB に保存する前と、DB を引く前の両方で通す。
+    ///
+    /// 同じファイルが別の綴りで 2 回記録されるのを防ぐ。
+    /// Windows の `std::fs::canonicalize` は `\\?\C:\...` という verbatim 形式を返すが、
+    /// ブラウザ拡張や他のツールが渡してくるのは `C:\...` なので、そのままでは一致しない。
+    /// 既定実装は std のまま。差がある OS はここを上書きする。
+    fn canonical(&self, path: &Path) -> std::io::Result<PathBuf> {
+        std::fs::canonicalize(path)
+    }
 }
 
 /// すべてを束ねるエントリポイント。アプリは常にこれだけを受け取る。
