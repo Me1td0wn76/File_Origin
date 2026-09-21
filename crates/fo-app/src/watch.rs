@@ -58,6 +58,7 @@ pub enum WatchEvent<'a> {
         path: &'a Path,
         verdict: &'a fo_core::Verdict,
         os_origins_recorded: usize,
+        path_changed: bool,
     },
     /// 消えたので `missing` にした。
     MarkedMissing {
@@ -153,6 +154,7 @@ pub fn tick(
                 path: &path,
                 verdict: &ing.verdict,
                 os_origins_recorded: ing.os_origins_recorded,
+                path_changed: ing.path_changed,
             }),
             Err(error) => on_event(WatchEvent::Failed { path: &path, error }),
         }
