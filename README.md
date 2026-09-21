@@ -4,10 +4,10 @@
 
 ファイルは残るが、**どこから来たか**は残らない。File Origin はその欠落した 1 行を、ダウンロードの瞬間に拾って保管し続ける。
 
-- 🖥 **Windows / Linux 対応**（ネイティブ実装、単一バイナリ）
-- 🔒 **ローカル完結** — 外部送信なし
-- 🧩 **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
-- 🔁 **移動・リネーム追跡** — ファイルが動いても追い続ける
+- **Windows / Linux 対応**（ネイティブ実装、単一バイナリ）
+- **ローカル完結** — 外部送信なし
+- **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
+- **移動・リネーム追跡** — ファイルが動いても追い続ける
 
 > **Status: M1 実装中 — Windows でビルド・テスト・動作確認済み**
 > 本 README はアーキテクチャ設計文書を兼ねます。
@@ -822,19 +822,19 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
 | 安定識別子 | ○ | ○ | Win: `FILE_ID_INFO` (FFI) / Linux: `statx` |
-| 識別子→パス逆引き | ⛔ | ⛔ | Win は M3 で実装予定。Linux は OS に存在しない |
+| 識別子→パス逆引き | × | × | Win は M3 で実装予定。Linux は OS に存在しない |
 | 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は M2（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
 | データ配置先 | ○ | ○ | `%LOCALAPPDATA%` / XDG |
 | SQLite スキーマ | ○ | ○ | マイグレーション込み |
 | 同一性判定のはしご | ○ | ○ | 純粋関数・テスト済み |
 | SHA-256 | ○ | ○ | 遅延計算（[ADR-0007](docs/adr/0007-hashing-strategy.md)） |
-| ファイル監視 | ⛔ | ⛔ | M3 |
-| 変更ジャーナル | ⛔ | ⛔ | M3（任意機能・[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
-| IPC / デーモン | ⛔ | ⛔ | M3 |
-| ブラウザ拡張 | ⛔ | ⛔ | M4。**Linux ではこれが必須** |
-| GUI | ⛔ | ⛔ | M5 |
+| ファイル監視 | × | × | M3 |
+| 変更ジャーナル | × | × | M3（任意機能・[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
+| IPC / デーモン | × | × | M3 |
+| ブラウザ拡張 | × | × | M4。**Linux ではこれが必須** |
+| GUI | × | × | M5 |
 
-○ 実装済み ／ △ 実装済みだが制約あり ／ ⛔ 未実装
+○ 実装済み ／ △ 実装済みだが制約あり ／ × 未実装
 
 ### CI マトリクス
 
@@ -885,8 +885,8 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | D2 | 既存 OSS・製品の調査 | [`docs/prior-art.md`](docs/prior-art.md)。**競合 1 件**（WhereFrom）発見、設計の誤り 2 件を修正 | ○ 完了 |
 | D3 | DB 暗号化 | **v1 では暗号化しない。** 鍵管理のコストが利得を上回り、脅威モデルにも合わないため。ディスク暗号化（BitLocker / LUKS）を案内する（[ADR-0006](docs/adr/0006-no-db-encryption-v1.md)） | ○ 決定 |
 | D4 | macOS 対応 | **v1 のスコープ外。** ただし `fo-platform/macos/` を足せば済む設計を維持する。`kMDItemWhereFroms` で実現可能 | ○ 方針確定 |
-| D5 | GUI フロントエンド | **React + TypeScript + Vite（暫定）。** 貢献者の母数と仮想リスト等のエコシステムを優先。M5 着手時に再確認する | 🔶 暫定 |
-| D6 | パッケージ名・配布 ID | 命名規則を **`io.github.<handle>.file_origin`** に固定（Native Messaging の制約に合わせ小文字・アンダースコア）。`<handle>` は公開リポジトリ確定時に 1 箇所で定義する | 🔶 規則のみ確定 |
+| D5 | GUI フロントエンド | **React + TypeScript + Vite（暫定）。** 貢献者の母数と仮想リスト等のエコシステムを優先。M5 着手時に再確認する | △ 暫定 |
+| D6 | パッケージ名・配布 ID | 命名規則を **`io.github.<handle>.file_origin`** に固定（Native Messaging の制約に合わせ小文字・アンダースコア）。`<handle>` は公開リポジトリ確定時に 1 箇所で定義する | △ 規則のみ確定 |
 | D7 | 大容量ファイルのハッシュ | **常に全体 SHA-256。ただし記録と切り離して遅延計算する。** 部分ハッシュは同一性判定に使えない（[ADR-0007](docs/adr/0007-hashing-strategy.md)） | ○ 決定 |
 | D8 | 想定ユーザーの再定義 | **§2 を書き換えた。** ドメイン特化ツールの外側にあるファイルが居場所であることを明示 | ○ 完了 |
 | D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ○ 決定 |
@@ -899,7 +899,7 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
-| **M1** コア + CLI | 🔶 `fo-core` / `fo-store` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `stats`<br/>**残: ビルド検証・手動登録・検索** | `fo` コマンドが動く |
+| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `stats`<br/>**残: ビルド検証・手動登録・検索** | `fo` コマンドが動く |
 | **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
 | **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |
@@ -918,5 +918,5 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 
 Rust 界隈で慣習的な `MIT OR Apache-2.0` ではなく MIT 単独を選択。利用者にとって最も明快で、ブラウザ拡張側のコードとも揃えやすいため。
 
-> 📝 `LICENSE` の著作権表記は現在 `Copyright (c) 2026 File Origin contributors` になっている。
+> 注: `LICENSE` の著作権表記は現在 `Copyright (c) 2026 File Origin contributors` になっている。
 > 個人名や GitHub ハンドルにしたい場合はこの行を書き換えること。
