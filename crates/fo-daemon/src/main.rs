@@ -93,13 +93,25 @@ fn main() -> Result<()> {
     let store =
         Store::open(&db_path).with_context(|| format!("DB を開けません: {}", db_path.display()))?;
 
-    let roots = if cli.roots.is_empty() {
+    let raw_roots = if cli.roots.is_empty() {
         platform.paths().default_download_dirs()
     } else {
         cli.roots.clone()
     };
-    if roots.is_empty() {
+    if raw_roots.is_empty() {
         anyhow::bail!("監視対象がありません。--root で指定してください。");
+    }
+    // 根を先に正規化する。監視ライブラリは登録した根をそのまま前置して
+    // イベントを返すので、根が正規なら子も正規になる。
+    let mut roots = Vec::with_capacity(raw_roots.len());
+    for r in raw_roots {
+        match platform.paths().canonical(&r) {
+            Ok(c) => roots.push(c),
+            Err(e) => eprintln!("  監視対象を解決できません {}: {e}", r.display()),
+        }
+    }
+    if roots.is_empty() {
+        anyhow::bail!("監視対象をひとつも解決できませんでした。");
     }
 
     // 先に IPC を張る。既に動いているデーモンがあればここで失敗し、

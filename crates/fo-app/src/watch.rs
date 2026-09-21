@@ -149,6 +149,13 @@ pub fn tick(
         if !meta.is_file() {
             continue;
         }
+        // **必ず正規化してから渡す。**
+        // 監視ライブラリは登録した根のパスをそのまま前置して返すので、
+        // 根が `C:/a/b` なら `C:/a/b\c.zip` のように区切りが混ざる。
+        // `Path` の比較は区切りを同一視するが SQL の文字列比較はしないため、
+        // 混ざったまま保存すると `fo show` が自分で入れた記録を引けなくなる。
+        // スキャンと違い監視のイベントは低頻度なので、1 件ずつ払っても問題ない。
+        let path = platform.paths().canonical(&path).unwrap_or(path);
         match ingest_file(platform, store, &path, &meta, opts) {
             Ok(ing) => on_event(WatchEvent::Ingested {
                 path: &path,
@@ -167,6 +174,9 @@ pub fn tick(
         if path.exists() {
             continue;
         }
+        // 消えたファイルは canonical() を通せない（実体が要る）ので、
+        // 区切りだけ揃えて DB の文字列と突き合わせる。
+        let path = normalize_separators(&path);
         match store.mark_missing_by_path(&path) {
             Ok(true) => on_event(WatchEvent::MarkedMissing { path: &path }),
             Ok(false) => {}
@@ -180,9 +190,39 @@ pub fn tick(
     Ok(())
 }
 
+/// 実体が無いパスの区切りを、その OS の正規の形に揃える。
+///
+/// `canonical()` は実在するファイルにしか使えないので、消えたファイルの
+/// 突き合わせにはこちらを使う。内容は変えず、区切り文字だけ直す。
+pub fn normalize_separators(path: &Path) -> PathBuf {
+    if std::path::MAIN_SEPARATOR == '/' {
+        return path.to_path_buf();
+    }
+    match path.to_str() {
+        Some(s) if s.contains('/') => PathBuf::from(s.replace('/', "\\")),
+        _ => path.to_path_buf(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_mixed_separators() {
+        // 監視ライブラリが返す混在パスを、DB の文字列と突き合わせられる形にする。
+        // これが揃っていないと、自分で入れた記録を `fo show` が引けない。
+        let mixed = Path::new(r"C:/dl/sub\a.zip");
+        let fixed = normalize_separators(mixed);
+        // OS そのものを判定せず、std が持つ区切り文字の値を見る。
+        // 条件コンパイルで分岐すると arch-guard に止められる — そしてそれは正しい。
+        // 知りたいのは「区切り文字は何か」であって「どの OS か」ではない。
+        if std::path::MAIN_SEPARATOR == '\\' {
+            assert_eq!(fixed, PathBuf::from(r"C:\dl\sub\a.zip"));
+        } else {
+            assert_eq!(fixed, mixed);
+        }
+    }
 
     #[test]
     fn detects_in_progress_downloads() {
