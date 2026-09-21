@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use fo_core::model::{FileStatus, SearchHit, SearchQuery};
+use fo_core::model::{FileStatus, SearchHit, SearchQuery, SortKey, SortOrder};
 use fo_store::Store;
 
 pub struct Args {
@@ -12,6 +12,9 @@ pub struct Args {
     pub since: Option<String>,
     pub until: Option<String>,
     pub limit: usize,
+    pub sort: String,
+    /// 昇順にするか。false なら項目ごとの自然な向き。
+    pub asc: bool,
 }
 
 pub fn run(store: &Store, args: Args) -> Result<()> {
@@ -28,6 +31,7 @@ pub fn run(store: &Store, args: Args) -> Result<()> {
             .transpose()?,
         sha256: None,
         limit: args.limit,
+        sort: parse_sort(&args.sort, args.asc)?,
     };
     let hits = fo_app::search(store, q)?;
     print_hits(&hits, args.limit)?;
@@ -81,6 +85,28 @@ fn print_hits(hits: &[SearchHit], limit: usize) -> Result<()> {
         outln!("{} 件", hits.len());
     }
     Ok(())
+}
+
+/// `--sort` と `--asc` を並び順にする。
+///
+/// `--asc` を付けなければ項目ごとの自然な向き（日時・サイズ・確度は降順、名前は昇順）。
+/// どの項目でも既定が降順だと、名前順が Z から始まって使いにくい。
+fn parse_sort(key: &str, asc: bool) -> Result<SortOrder> {
+    let Some(key) = SortKey::parse(key) else {
+        bail!(
+            "並べ替えの項目が違います: {key}（使えるのは {}）",
+            SortKey::all()
+                .iter()
+                .map(|k| k.as_str())
+                .collect::<Vec<_>>()
+                .join(" / ")
+        );
+    };
+    Ok(if asc {
+        SortOrder::new(key, false)
+    } else {
+        SortOrder::natural(key)
+    })
 }
 
 /// `YYYY-MM-DD` をローカル時刻のその日 0 時として Unix 秒に。
