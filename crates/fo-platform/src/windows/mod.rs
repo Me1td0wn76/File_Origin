@@ -6,9 +6,7 @@ mod identity;
 mod origin;
 mod paths;
 
-use crate::{
-    Capabilities, Capability, FileIdentity, OriginMetadata, Platform, PlatformPaths,
-};
+use crate::{Capabilities, Capability, FileIdentity, OriginMetadata, Platform, PlatformPaths};
 
 pub struct WindowsPlatform {
     identity: identity::WindowsIdentity,
