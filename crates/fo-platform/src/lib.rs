@@ -207,13 +207,13 @@ pub trait PlatformPaths {
 ///
 /// TODO(M3): `ChangeJournal`（USN / fanotify）を追加する。既定の差分スキャンで
 /// 代替できるため、監視より後回しにしている（ADR-0005）。
-/// TODO(M4): `NativeHostInstaller` を追加する。
 /// TODO(M6): `Autostart` を追加する。
 pub trait Platform: Send + Sync {
     fn identity(&self) -> &dyn FileIdentity;
     fn origin_meta(&self) -> &dyn OriginMetadata;
     fn paths(&self) -> &dyn PlatformPaths;
     fn ipc(&self) -> &dyn IpcTransport;
+    fn host_installer(&self) -> &dyn NativeHostInstaller;
 
     /// 新しい監視器を作る。
     ///
@@ -230,9 +230,11 @@ pub trait Platform: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub mod ipc;
+pub mod nativehost;
 pub mod watcher;
 
 pub use ipc::{IpcListener, IpcName, IpcStream, IpcTransport};
+pub use nativehost::{Browser, HostManifest, Installed, NativeHostInstaller};
 pub use watcher::{FsEvent, FsWatcher};
 
 #[cfg(windows)]
