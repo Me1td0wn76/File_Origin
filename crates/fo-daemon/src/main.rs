@@ -19,6 +19,18 @@
 //!   main ──┬── watcher thread  : 監視 → ingest
 //!          └── ipc thread × N  : accept ごとに 1 本
 //! ```
+//!
+//! ## コンソール窓を持たない
+//!
+//! 常駐プロセスがウィンドウを持つのはおかしいし、誤って閉じると記録が止まる。
+//! リリースビルドでは GUI サブシステムにして窓を出さない。
+//! そのぶん `eprintln!` の行き先が無くなるので、**ログはファイルに書く**
+//! （`logging` モジュール）。`--foreground` を付けると起動元の端末にも出す。
+
+// デバッグビルドでは今までどおりコンソールに出す。開発中に窓が無いのは不便。
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod logging;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +43,8 @@ use fo_app::{IngestOptions, Pending, WatchEvent};
 use fo_ipc::{DaemonStatus, DownloadReport, Request, Response};
 use fo_platform::Platform;
 use fo_store::Store;
+
+use crate::logging::Logger;
 
 #[derive(Parser)]
 #[command(name = "fo-daemon", about = "File Origin の常駐サービス", version)]
@@ -50,6 +64,17 @@ struct Cli {
     /// 取り込み時に SHA-256 も計算する
     #[arg(long)]
     hash: bool,
+
+    /// 起動元の端末にもログを出す（常駐させず手元で動かすとき）
+    #[arg(long)]
+    foreground: bool,
+
+    /// ログに入手元 URL を丸ごと残す
+    ///
+    /// 既定はホストまでに削る。URL は閲覧履歴と同等の機微情報なので、
+    /// 調査が要るときだけ明示的に有効にする（README §14）。
+    #[arg(long)]
+    verbose: bool,
 }
 
 /// デーモンの共有状態。
@@ -60,6 +85,7 @@ struct Daemon {
     started: Instant,
     shutdown: AtomicBool,
     opts: IngestOptions,
+    log: Logger,
 }
 
 impl Daemon {
@@ -77,6 +103,7 @@ impl Daemon {
             uptime_secs: self.started.elapsed().as_secs(),
             files: store.count_files()?,
             watching: true,
+            log_path: Some(self.log.path().display().to_string()),
         })
     }
 
@@ -89,9 +116,18 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let platform = fo_platform::current();
 
+    // --foreground のときだけ端末に繋ぐ。既定では窓を出さない。
+    let to_stderr = cli.foreground && platform.attach_parent_console();
+    let log = Logger::open(&platform.paths().log_dir(), to_stderr, cli.verbose);
+
     let db_path = cli.db.unwrap_or_else(|| platform.paths().database_path());
-    let store =
-        Store::open(&db_path).with_context(|| format!("DB を開けません: {}", db_path.display()))?;
+    let store = Store::open(&db_path).map_err(|e| {
+        // DB が開けないのは致命的。ログに残してから終わる。
+        // 窓が無い状態で黙って死ぬと、原因を追う手がかりがゼロになる。
+        log.log(&format!("[致命] DB を開けません {}: {e}", db_path.display()));
+        e
+    })
+    .with_context(|| format!("DB を開けません: {}", db_path.display()))?;
 
     let raw_roots = if cli.roots.is_empty() {
         platform.paths().default_download_dirs()
@@ -107,7 +143,7 @@ fn main() -> Result<()> {
     for r in raw_roots {
         match platform.paths().canonical(&r) {
             Ok(c) => roots.push(c),
-            Err(e) => eprintln!("  監視対象を解決できません {}: {e}", r.display()),
+            Err(e) => log.log(&format!("[警告] 監視対象を解決できません {}: {e}", r.display())),
         }
     }
     if roots.is_empty() {
@@ -116,18 +152,26 @@ fn main() -> Result<()> {
 
     // 先に IPC を張る。既に動いているデーモンがあればここで失敗し、
     // 二重起動で DB を取り合うのを防げる。
-    let listener = platform.ipc().bind().with_context(|| {
+    let listener = platform.ipc().bind().map_err(|e| {
+        log.log(&format!(
+            "[致命] IPC を開けません（既にデーモンが動いていませんか）: {} — {e}",
+            platform.ipc().endpoint_display()
+        ));
+        e
+    })
+    .with_context(|| {
         format!(
             "IPC を開けません（既にデーモンが動いていませんか）: {}",
             platform.ipc().endpoint_display()
         )
     })?;
 
-    eprintln!("file-origin daemon {}", env!("CARGO_PKG_VERSION"));
-    eprintln!("  DB   : {}", db_path.display());
-    eprintln!("  IPC  : {}", platform.ipc().endpoint_display());
+    log.log(&format!("起動 file-origin daemon {}", env!("CARGO_PKG_VERSION")));
+    log.log(&format!("  DB   : {}", db_path.display()));
+    log.log(&format!("  IPC  : {}", platform.ipc().endpoint_display()));
+    log.log(&format!("  ログ : {}", log.path().display()));
     for r in &roots {
-        eprintln!("  監視 : {}", r.display());
+        log.log(&format!("  監視 : {}", r.display()));
     }
 
     let daemon = Arc::new(Daemon {
@@ -137,6 +181,7 @@ fn main() -> Result<()> {
         started: Instant::now(),
         shutdown: AtomicBool::new(false),
         opts: IngestOptions { hash: cli.hash },
+        log,
     });
 
     // 起動時の差分スキャン。停止中の変更を拾う唯一の手段（ADR-0005）。
@@ -155,7 +200,7 @@ fn main() -> Result<()> {
 
     daemon.shutdown.store(true, Ordering::Relaxed);
     let _ = watcher_handle.join();
-    eprintln!("停止しました。");
+    daemon.log.log("停止しました。");
     Ok(())
 }
 
@@ -185,11 +230,14 @@ fn initial_scan(d: &Daemon) -> Result<()> {
             }
         });
         match res {
-            Ok(_) => eprintln!(
+            Ok(_) => d.log.log(&format!(
                 "  起動時スキャン {}: 新規 {new} / 移動 {moved}",
                 root.display()
-            ),
-            Err(e) => eprintln!("  起動時スキャン {} を飛ばしました: {e}", root.display()),
+            )),
+            Err(e) => d.log.log(&format!(
+                "[警告] 起動時スキャン {} を飛ばしました: {e}",
+                root.display()
+            )),
         }
     }
     Ok(())
@@ -199,7 +247,7 @@ fn watch_loop(d: &Daemon) {
     let mut watcher = match d.platform.new_watcher() {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("監視を開始できません: {e}");
+            d.log.log(&format!("[致命] 監視を開始できません: {e}"));
             return;
         }
     };
@@ -207,7 +255,8 @@ fn watch_loop(d: &Daemon) {
         let roots = d.roots.lock().expect("roots mutex");
         for root in roots.iter() {
             if let Err(e) = watcher.watch(root, true) {
-                eprintln!("監視できません {}: {e}", root.display());
+                d.log
+                    .log(&format!("[警告] 監視できません {}: {e}", root.display()));
             }
         }
     }
@@ -228,7 +277,7 @@ fn watch_loop(d: &Daemon) {
                     os_origins_recorded,
                     path_changed,
                 } => {
-                    eprintln!(
+                    d.log.log(&format!(
                         "[{}] {}{}",
                         label(verdict, path_changed),
                         path.display(),
@@ -237,22 +286,23 @@ fn watch_loop(d: &Daemon) {
                         } else {
                             String::new()
                         }
-                    );
+                    ));
                 }
                 WatchEvent::MarkedMissing { path } => {
-                    eprintln!("[見失い] {}", path.display());
+                    d.log.log(&format!("[見失い] {}", path.display()));
                 }
                 WatchEvent::NeedsRescan => {
-                    eprintln!("[警告] イベントを取りこぼしました。fo scan で補正してください。");
+                    d.log
+                        .log("[警告] イベントを取りこぼしました。fo scan で補正してください。");
                 }
                 WatchEvent::Failed { path, error } => {
-                    eprintln!("[失敗] {}: {error}", path.display());
+                    d.log.log(&format!("[失敗] {}: {error}", path.display()));
                 }
             },
         );
         drop(store);
         if let Err(e) = r {
-            eprintln!("監視が停止しました: {e}");
+            d.log.log(&format!("[致命] 監視が停止しました: {e}"));
             return;
         }
     }
@@ -281,7 +331,7 @@ fn serve(d: &Arc<Daemon>, listener: &dyn fo_platform::IpcListener) {
                 if d.stopping() {
                     break;
                 }
-                eprintln!("接続を受け付けられません: {e}");
+                d.log.log(&format!("[警告] 接続を受け付けられません: {e}"));
                 continue;
             }
         };
@@ -304,7 +354,7 @@ fn handle(d: &Daemon, mut stream: Box<dyn fo_platform::IpcStream>) {
             // 相手が閉じただけ。異常ではない。
             Err(fo_ipc::Error::Closed) => return,
             Err(e) => {
-                eprintln!("要求を読めません: {e}");
+                d.log.log(&format!("[警告] 要求を読めません: {e}"));
                 return;
             }
         };
