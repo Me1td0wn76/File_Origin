@@ -20,12 +20,12 @@ pub mod scan;
 pub mod search;
 pub mod watch;
 
+pub use browser::{record_download, DownloadReport};
 pub use describe::{describe, Description};
 pub use ingest::{ingest_file, IngestOptions, Ingested};
 pub use manual::add_manual_origin;
 pub use scan::{scan_dir, ScanEvent, ScanOptions};
 pub use search::{locate, search};
-pub use browser::{record_download, DownloadReport};
 pub use watch::{tick, Pending, WatchEvent};
 
 pub type Result<T> = std::result::Result<T, Error>;
