@@ -1,14 +1,14 @@
 //! Linux の入手元メタデータ。
 //!
-//! ⚠️ **Windows と違い、この経路は当てにならない。**
+//! △ **Windows と違い、この経路は当てにならない。**
 //!
 //! freedesktop.org は `user.xdg.origin.url` を標準として定義しているが、実装状況が悪い:
 //!
 //! | 実装 | 状況 |
 //! |---|---|
-//! | Firefox | ❌ xattr を書かない（GVFS メタデータに書く） |
-//! | Chrome / Chromium | ❌ 実装後に撤回 |
-//! | `wget --xattr` / `curl --xattr` | ✅ 書く |
+//! | Firefox | × xattr を書かない（GVFS メタデータに書く） |
+//! | Chrome / Chromium | × 実装後に撤回 |
+//! | `wget --xattr` / `curl --xattr` | ○ 書く |
 //!
 //! そのため **Linux ではブラウザ拡張（M4）が事実上の必須機能**になる。
 //! 調査の詳細は `docs/prior-art.md` §2.3 を参照。
