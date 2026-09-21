@@ -58,14 +58,68 @@ impl OriginMetadata for WindowsOriginMetadata {
     }
 }
 
-/// BOM を落として UTF-8 として解釈する。
+/// Zone.Identifier のバイト列を文字列にする。
 ///
-/// Zone.Identifier は通常 ASCII だが、UTF-8 BOM 付きで書かれることがある。
-/// 不正なバイトは lossy に潰す — URL が 1 文字化けても、記録が無いよりはよい。
+/// **UTF-8 決め打ちにはできない。** ブラウザが書く URL は ASCII なので
+/// 気づきにくいが、書庫から展開したファイルには **展開元のローカルパス**が入り、
+/// それは **システム ANSI コードページ**（日本語環境なら CP932）で書かれる。
+/// UTF-8 として lossy 復号すると、日本語のファイル名が丸ごと化ける。
+///
+/// 末尾の NUL も落とす。実データには `...zip\0` のように付いていることがあり、
+/// 残すと URL の末尾に見えない文字が入る。
 fn decode(bytes: &[u8]) -> String {
     let capped = &bytes[..bytes.len().min(MAX_ZONE_BYTES)];
     let body = capped.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(capped);
-    String::from_utf8_lossy(body).into_owned()
+    let body = trim_trailing_nuls(body);
+
+    // まず UTF-8 として厳密に試す。通ればそれが正しい
+    // （ASCII はここで必ず通るので、大多数はこの経路）。
+    match std::str::from_utf8(body) {
+        Ok(s) => s.to_string(),
+        // 通らなければ ANSI コードページ。書いた側と同じ解釈で読む。
+        Err(_) => ansi_to_string(body),
+    }
+}
+
+fn trim_trailing_nuls(mut b: &[u8]) -> &[u8] {
+    while let Some((0, rest)) = b.split_last() {
+        b = rest;
+    }
+    b
+}
+
+/// システム ANSI コードページ（CP_ACP）として復号する。
+///
+/// 固定で CP932 にしないのは、日本語環境以外でも同じ問題が起きるため
+/// （西欧なら CP1252、中国語なら CP936）。書き手は OS の既定を使うので、
+/// 読み手も OS の既定に従うのが正しい。
+fn ansi_to_string(bytes: &[u8]) -> String {
+    use windows_sys::Win32::Globalization::{MultiByteToWideChar, CP_ACP};
+
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let len = match i32::try_from(bytes.len()) {
+        Ok(n) => n,
+        Err(_) => return String::from_utf8_lossy(bytes).into_owned(),
+    };
+
+    // SAFETY: 出力長 0 で呼ぶと必要な文字数だけを返す（書き込みはしない）。
+    let needed =
+        unsafe { MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0) };
+    if needed <= 0 {
+        // 変換できないなら、せめて読める部分だけでも残す。
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+
+    let mut wide = vec![0u16; needed as usize];
+    // SAFETY: wide は needed 文字分を確保済み。
+    let written =
+        unsafe { MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), needed) };
+    if written <= 0 {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+    String::from_utf16_lossy(&wide[..written as usize])
 }
 
 /// `[ZoneTransfer]` セクションから入手元を取り出す。
@@ -262,6 +316,30 @@ mod tests {
         assert_eq!(origin.url.as_deref(), Some("https://example.com/a"));
     }
 
+    #[test]
+    fn strips_trailing_nul() {
+        // 実データには末尾に NUL が付く。残すと URL の末尾に見えない文字が入り、
+        // 表示も検索も狂う。
+        let mut bytes = b"[ZoneTransfer]\r\nHostUrl=https://e.example/a.zip".to_vec();
+        bytes.push(0);
+        let o = parse_zone_identifier(&decode(&bytes)).unwrap();
+        assert_eq!(o.url.as_deref(), Some("https://e.example/a.zip"));
+    }
+
+    #[test]
+    fn decodes_ansi_codepage_paths() {
+        // 書庫から展開したファイルの Zone.Identifier には展開元のローカルパスが入り、
+        // それはシステム ANSI コードページで書かれる（日本語環境なら CP932）。
+        // UTF-8 決め打ちで読むと日本語のファイル名が丸ごと化ける。
+        let mut bytes = b"[ZoneTransfer]\r\nReferrerUrl=C:\\\\dl\\\\".to_vec();
+        bytes.extend_from_slice(&[0x96, 0xc0, 0x82, 0xa2]); // CP932 の「迷い」
+        bytes.extend_from_slice(b".zip\r\n");
+
+        let text = decode(&bytes);
+        assert!(text.contains("ReferrerUrl=C:"), "{text}");
+        // ANSI として読めていれば置換文字は出ない。
+        assert!(!text.contains('\u{FFFD}'), "置換文字が残っている: {text}");
+    }
     #[test]
     fn caps_oversized_stream() {
         let huge = vec![b'x'; MAX_ZONE_BYTES * 2];
