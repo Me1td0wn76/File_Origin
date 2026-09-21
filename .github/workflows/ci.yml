@@ -30,8 +30,14 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+
+      # 書式は全クレートが対象。コンパイル不要なので GUI も含められる。
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets
+
+      # clippy は fo-gui を除く。Tauri は GTK/WebKit のシステムライブラリを
+      # 要求し、それを入れるとこのジョブが数分重くなる。
+      # GUI の clippy は専用の gui ジョブで回す。
+      - run: cargo clippy --workspace --exclude fo-gui --all-targets
 
   test:
     name: test (${{ matrix.os }})
@@ -47,9 +53,52 @@ jobs:
 
       # 両 OS で必ず回す。プラットフォーム層は実機でしか検証できないため、
       # 片方だけ通っても意味がない。
-      - run: cargo build --workspace
-      - run: cargo test --workspace
+      #
+      # fo-gui を外すのは、コアの回帰を素早く見つけるため。
+      # Tauri を含めるとビルドが数分伸びて、このジョブの価値（速いフィードバック）が落ちる。
+      - run: cargo build --workspace --exclude fo-gui
+      - run: cargo test --workspace --exclude fo-gui
 
       # 実際に動くことの最小確認。doctor は DB を開かずに動くので、
       # 環境構築なしで実行できる。
       - run: cargo run -p fo-cli -- doctor
+
+  gui:
+    name: gui (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri の Linux 依存。WebKitGTK ほかシステムライブラリが要る。
+      # Windows は WebView2 が OS に同梱されているので何も要らない。
+      # この非対称がジョブを分けている理由のひとつ。
+      - name: Linux の GUI 依存を入れる
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # フロントエンドは手書きの静的ファイル（gui/web）。
+      # バンドラを使わないので npm は要らないが、tauri.conf.json の
+      # frontendDist が指す先が無いとビルドが落ちる。先に確かめる。
+      - name: フロントエンドの存在を確認
+        shell: bash
+        run: test -f gui/web/index.html
+
+      - run: cargo clippy -p fo-gui --all-targets
+      - run: cargo build -p fo-gui
