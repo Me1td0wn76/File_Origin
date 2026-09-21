@@ -24,35 +24,6 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     path
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strips_drive_verbatim() {
-        assert_eq!(
-            strip_verbatim_prefix(PathBuf::from(r"\\?\C:\Users\x\a.zip")),
-            PathBuf::from(r"C:\Users\x\a.zip")
-        );
-    }
-
-    #[test]
-    fn strips_unc_verbatim() {
-        assert_eq!(
-            strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\nas\share\a.zip")),
-            PathBuf::from(r"\\nas\share\a.zip")
-        );
-    }
-
-    #[test]
-    fn leaves_plain_paths_alone() {
-        assert_eq!(
-            strip_verbatim_prefix(PathBuf::from(r"C:\plain\a.zip")),
-            PathBuf::from(r"C:\plain\a.zip")
-        );
-    }
-}
-
 const APP_DIR: &str = "FileOrigin";
 
 pub struct WindowsPaths;
@@ -89,7 +60,9 @@ impl PlatformPaths for WindowsPaths {
     fn runtime_dir(&self) -> PathBuf {
         // Windows に XDG_RUNTIME_DIR 相当は無い。名前付きパイプは
         // ファイルシステム上のパスを使わないため、ここは一時領域でよい。
-        env_path("TEMP").unwrap_or_else(std::env::temp_dir).join(APP_DIR)
+        env_path("TEMP")
+            .unwrap_or_else(std::env::temp_dir)
+            .join(APP_DIR)
     }
 
     fn canonical(&self, path: &Path) -> std::io::Result<PathBuf> {
@@ -104,5 +77,34 @@ impl PlatformPaths for WindowsPaths {
         env_path("USERPROFILE")
             .map(|p| vec![p.join("Downloads")])
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_drive_verbatim() {
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\C:\Users\x\a.zip")),
+            PathBuf::from(r"C:\Users\x\a.zip")
+        );
+    }
+
+    #[test]
+    fn strips_unc_verbatim() {
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\nas\share\a.zip")),
+            PathBuf::from(r"\\nas\share\a.zip")
+        );
+    }
+
+    #[test]
+    fn leaves_plain_paths_alone() {
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(r"C:\plain\a.zip")),
+            PathBuf::from(r"C:\plain\a.zip")
+        );
     }
 }
