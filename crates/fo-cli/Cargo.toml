@@ -19,3 +19,4 @@ fo-app = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
+fo-ipc = { workspace = true }
