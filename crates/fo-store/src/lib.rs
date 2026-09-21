@@ -46,6 +46,15 @@ pub struct Store {
     conn: Connection,
 }
 
+/// 進行中のトランザクション。`commit()` しないままドロップすると巻き戻る。
+pub struct Batch<'a>(rusqlite::Transaction<'a>);
+
+impl Batch<'_> {
+    pub fn commit(self) -> Result<()> {
+        Ok(self.0.commit()?)
+    }
+}
+
 impl Store {
     /// DB を開き、必要ならマイグレーションを適用する。
     pub fn open(path: &Path) -> Result<Self> {
@@ -125,6 +134,14 @@ impl Store {
             )?;
         }
         Ok(())
+    }
+
+    /// 複数の書き込みを 1 つのトランザクションにまとめる。
+    ///
+    /// SQLite は autocommit だと 1 文ごとに fsync するため、数千ファイルの初回走査が
+    /// 数十秒かかる。まとめれば秒単位になる。`commit()` を呼ばずに落とすと巻き戻る。
+    pub fn batch(&self) -> Result<Batch<'_>> {
+        Ok(Batch(self.conn.unchecked_transaction()?))
     }
 
     /// 安定識別子でファイルを引く。同一性判定の 1 段目。
