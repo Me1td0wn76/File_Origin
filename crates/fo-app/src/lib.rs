@@ -12,17 +12,21 @@
 //! 依存しているため `fo-core` からストアは呼べない。依存方向を守るには
 //! 両方の上に載る別クレートが要る（Decision Log D11）。
 
+pub mod browser;
 pub mod describe;
 pub mod ingest;
 pub mod manual;
 pub mod scan;
 pub mod search;
+pub mod watch;
 
 pub use describe::{describe, Description};
 pub use ingest::{ingest_file, IngestOptions, Ingested};
 pub use manual::add_manual_origin;
 pub use scan::{scan_dir, ScanEvent, ScanOptions};
 pub use search::{locate, search};
+pub use browser::{record_download, DownloadReport};
+pub use watch::{tick, Pending, WatchEvent};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -45,4 +49,7 @@ pub enum Error {
 
     #[error("記録がありません: {0}")]
     NotRecorded(std::path::PathBuf),
+
+    #[error("URL も参照元も無い報告は記録できません")]
+    EmptyReport,
 }
