@@ -124,6 +124,11 @@ enum DaemonAction {
     Ping,
     /// 停止を要求する
     Stop,
+    /// 生の JSON メッセージを 1 件送る（拡張やホストの動作確認用）
+    Send {
+        /// 行区切り JSON 1 行。例: {"kind":"ping"}
+        json: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -229,6 +234,7 @@ fn run() -> Result<()> {
             DaemonAction::Status => daemon::status(platform.as_ref())?,
             DaemonAction::Ping => daemon::ping(platform.as_ref())?,
             DaemonAction::Stop => daemon::stop(platform.as_ref())?,
+            DaemonAction::Send { json } => daemon::send_raw(platform.as_ref(), &json)?,
         },
 
         Command::Stats => {
