@@ -239,9 +239,7 @@ $("dlg-scan").addEventListener("close", async (e) => {
   toast("取り込み中…");
   try {
     toast(await invoke("scan", { path, hash: $("scan-hash").checked }));
-    // 並べ替えの選択肢を先に用意してから検索する。
-// 先に検索すると、保存済みの並びが反映されないまま一瞬既定で描画される。
-setupSort().then(runSearch);
+    runSearch();
   } catch (err) {
     toast(`取り込めません: ${err}`);
   }
@@ -362,4 +360,6 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-runSearch();
+// 並べ替えの選択肢を先に用意してから検索する。
+// 先に検索すると、保存済みの並びが反映されないまま一瞬既定の並びで描画される。
+setupSort().then(runSearch);
