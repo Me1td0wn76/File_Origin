@@ -1,0 +1,13 @@
+[package]
+name = "fo-core"
+description = "File Origin のドメインモデルとユースケース。OS を知らない層。"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fo-platform = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }

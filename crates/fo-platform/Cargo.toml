@@ -1,0 +1,20 @@
+[package]
+name = "fo-platform"
+description = "File Origin のプラットフォーム抽象化層。OS 固有コードはこのクレートにのみ置く。"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+# --- OS 固有依存 -------------------------------------------------------
+# workspace 内でこの種の依存を書いてよいのはこのクレートだけ。
+# scripts/arch-guard.sh が他クレートでの使用を検査する。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+xattr = { workspace = true }

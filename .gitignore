@@ -1,0 +1,19 @@
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# GUI (M5)
+/gui/node_modules
+/gui/dist
+/gui/src-tauri/target
+
+# 拡張機能 (M4)
+/extension/**/node_modules
+/extension/**/dist
+
+# ローカルの作業用
+*.db
+*.db-wal
+*.db-shm
+
+.claude
