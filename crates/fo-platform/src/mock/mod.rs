@@ -229,6 +229,10 @@ impl Platform for MockPlatform {
         &self.host_installer
     }
 
+    fn attach_parent_console(&self) -> bool {
+        true
+    }
+
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
         Ok(Box::new(NotifyWatcher::new()?))
     }
