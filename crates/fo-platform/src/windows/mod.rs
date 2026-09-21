@@ -3,15 +3,22 @@
 //! 対応表は README §7.2 を参照。
 
 mod identity;
+mod ipc;
 mod origin;
 mod paths;
 
-use crate::{Capabilities, Capability, FileIdentity, OriginMetadata, Platform, PlatformPaths};
+use crate::ipc::LocalSocket;
+use crate::watcher::NotifyWatcher;
+use crate::{
+    Capabilities, Capability, FileIdentity, FsWatcher, IpcTransport, OriginMetadata, Platform,
+    PlatformPaths, Result,
+};
 
 pub struct WindowsPlatform {
     identity: identity::WindowsIdentity,
     origin: origin::WindowsOriginMetadata,
     paths: paths::WindowsPaths,
+    ipc: LocalSocket,
 }
 
 impl WindowsPlatform {
@@ -20,6 +27,7 @@ impl WindowsPlatform {
             identity: identity::WindowsIdentity,
             origin: origin::WindowsOriginMetadata,
             paths: paths::WindowsPaths,
+            ipc: ipc::transport(),
         }
     }
 }
@@ -41,6 +49,14 @@ impl Platform for WindowsPlatform {
 
     fn paths(&self) -> &dyn PlatformPaths {
         &self.paths
+    }
+
+    fn ipc(&self) -> &dyn IpcTransport {
+        &self.ipc
+    }
+
+    fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
+        Ok(Box::new(NotifyWatcher::new()?))
     }
 
     fn capabilities(&self) -> Capabilities {
