@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use fo_core::model::{Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource};
+use fo_core::model::{Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource, PathEntry};
 use fo_platform::{FileKey, StableFileId, VolumeId};
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -284,6 +284,41 @@ impl Store {
             });
         }
         Ok(out)
+    }
+
+    /// id でファイルを引く。`derived_from` の系譜を辿るときに使う。
+    pub fn get_file(&self, file_id: i64) -> Result<Option<FileRecord>> {
+        self.conn
+            .query_row(
+                "SELECT f.id, f.volume_id, f.file_key, f.size, f.sha256, f.mtime,
+                        f.status, f.derived_from,
+                        COALESCE((SELECT p.path FROM file_paths p
+                                  WHERE p.file_id = f.id AND p.is_current = 1
+                                  LIMIT 1), '')
+                 FROM files f
+                 WHERE f.id = ?1",
+                params![file_id],
+                row_to_file,
+            )
+            .optional()?
+            .transpose()
+    }
+
+    /// パス履歴を新しい順に返す。先頭が現在のパス。
+    pub fn path_history(&self, file_id: i64) -> Result<Vec<PathEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, is_current, observed_at
+             FROM file_paths WHERE file_id = ?1
+             ORDER BY is_current DESC, observed_at DESC, id DESC",
+        )?;
+        let rows = stmt.query_map(params![file_id], |row| {
+            Ok(PathEntry {
+                path: PathBuf::from(row.get::<_, String>(0)?),
+                is_current: row.get::<_, i64>(1)? != 0,
+                observed_at: row.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// パスからファイルを引く。現在のパスのみを見る。
