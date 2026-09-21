@@ -13,8 +13,11 @@ pub struct Args {
     pub until: Option<String>,
     pub limit: usize,
     pub sort: String,
-    /// 昇順にするか。false なら項目ごとの自然な向き。
-    pub asc: bool,
+    /// 向きの指定。`None` なら項目ごとの自然な向き。
+    ///
+    /// bool 1 つ（`--asc` だけ）にすると、名前順は既定が昇順なので
+    /// **降順にする手段が無くなる**。向きは 3 状態で持つ。
+    pub direction: Option<bool>,
 }
 
 pub fn run(store: &Store, args: Args) -> Result<()> {
@@ -31,7 +34,7 @@ pub fn run(store: &Store, args: Args) -> Result<()> {
             .transpose()?,
         sha256: None,
         limit: args.limit,
-        sort: parse_sort(&args.sort, args.asc)?,
+        sort: parse_sort(&args.sort, args.direction)?,
     };
     let hits = fo_app::search(store, q)?;
     print_hits(&hits, args.limit)?;
@@ -87,11 +90,11 @@ fn print_hits(hits: &[SearchHit], limit: usize) -> Result<()> {
     Ok(())
 }
 
-/// `--sort` と `--asc` を並び順にする。
+/// `--sort` と向きの指定を並び順にする。
 ///
-/// `--asc` を付けなければ項目ごとの自然な向き（日時・サイズ・確度は降順、名前は昇順）。
+/// 向きを省いた場合は項目ごとの自然な向き（日時・サイズ・確度は降順、名前は昇順）。
 /// どの項目でも既定が降順だと、名前順が Z から始まって使いにくい。
-fn parse_sort(key: &str, asc: bool) -> Result<SortOrder> {
+fn parse_sort(key: &str, direction: Option<bool>) -> Result<SortOrder> {
     let Some(key) = SortKey::parse(key) else {
         bail!(
             "並べ替えの項目が違います: {key}（使えるのは {}）",
@@ -102,11 +105,36 @@ fn parse_sort(key: &str, asc: bool) -> Result<SortOrder> {
                 .join(" / ")
         );
     };
-    Ok(if asc {
-        SortOrder::new(key, false)
-    } else {
-        SortOrder::natural(key)
+    Ok(match direction {
+        Some(descending) => SortOrder::new(key, descending),
+        None => SortOrder::natural(key),
     })
+}
+
+#[cfg(test)]
+mod sort_tests {
+    use super::*;
+
+    #[test]
+    fn direction_defaults_to_natural_per_key() {
+        // 名前は昇順、日時・サイズ・確度は降順が自然。
+        assert!(!parse_sort("name", None).unwrap().descending);
+        assert!(parse_sort("size", None).unwrap().descending);
+        assert!(parse_sort("acquired", None).unwrap().descending);
+        assert!(parse_sort("confidence", None).unwrap().descending);
+    }
+
+    #[test]
+    fn direction_can_be_forced_both_ways() {
+        // --asc だけだと名前の降順が出せない。両方向を指定できること。
+        assert!(parse_sort("name", Some(true)).unwrap().descending);
+        assert!(!parse_sort("size", Some(false)).unwrap().descending);
+    }
+
+    #[test]
+    fn rejects_unknown_key() {
+        assert!(parse_sort("bogus", None).is_err());
+    }
 }
 
 /// `YYYY-MM-DD` をローカル時刻のその日 0 時として Unix 秒に。
