@@ -9,13 +9,13 @@
 - 🧩 **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
 - 🔁 **移動・リネーム追跡** — ファイルが動いても追い続ける
 
-> **Status: M1 実装中（雛型あり・未検証）**
+> **Status: M1 実装中 — Windows でビルド・テスト・動作確認済み**
 > 本 README はアーキテクチャ設計文書を兼ねます。
 > - 設計判断とその理由: [docs/adr/](docs/adr/)・[未決事項](#15-未決事項decision-log)
 > - 既存 OSS・製品の調査: [docs/prior-art.md](docs/prior-art.md)（完了）
 > - 何がどこまで動くか: [現在の実装状況](#現在の実装状況)
 >
-> ⚠️ **雛型はまだコンパイル検証されていません。** 最初のビルドでエラーが出る可能性があります（[検証手順](#13-ビルド配布)）。
+> Windows 11 / Rust 1.98 (GNU) で `cargo test` 28 件パス、`fo scan` → 移動 → 再 scan で入手元の追従を確認済み。**Linux は未検証**（CI で回す）。
 
 ---
 
@@ -795,10 +795,29 @@ cargo run -p fo-cli -- show ~/Downloads/setup.zip
 cargo run -p fo-cli -- stats
 ```
 
+### 開発環境（Windows）
+
+Rust は scoop の **`rust-gnu`** を使う（`rust` は MSVC 版で Visual Studio の `link.exe` が要る。mingw が入っていれば `rust-gnu` の方が手軽）。
+
+```powershell
+scoop install rust-gnu
+```
+
+scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回したければ `rustup` に切り替える。CI では回るので、無くても開発は進められる。
+
+なお `windows-sys` は **引数の型が属する feature も必要**になる。`CreateFileW` は `SECURITY_ATTRIBUTES` を引数に取るため、null を渡すだけでも `Win32_Security` が要る（無いと関数定義そのものが cfg で消え「no `CreateFileW`」になる）。
+
 ### 現在の実装状況
 
-雛型は **`fo doctor` / `fo scan` / `fo show` / `fo stats` が通る**ところまで。
-ただし**まだコンパイル検証されていない**（依存クレートのバージョンと Win32 FFI が未確認）。最初に `cargo check --workspace` を両 OS で通すこと。
+**`fo doctor` / `fo scan` / `fo show` / `fo stats` が動く。** Windows で以下を確認済み:
+
+- `fo scan --hash` で Zone.Identifier から入手元を取得
+- ファイルを **移動＋リネーム** → 再 scan で同一ファイルと認識し、入手元が追従（はしご 1 段目）
+- ファイルを **コピー** → 再 scan でコピーと判定し `derived_from` が付く（はしご 3 段目）
+- 何も変えずに再 scan → 変更なし
+- パス履歴が `file_paths` に残る（旧パスは `is_current = 0`）
+
+**Linux では未検証。** CI の `ubuntu-latest` ジョブが最初の検証になる。
 
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
