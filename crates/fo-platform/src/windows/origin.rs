@@ -72,6 +72,15 @@ fn decode(bytes: &[u8]) -> String {
 ///
 /// `HostUrl` が実際の取得先、`ReferrerUrl` が人間が見ていたページ。
 /// 両方揃わないことが多いので、片方でもあれば記録する。
+///
+/// 実データで分かった 2 つの慣用形を扱う:
+///
+/// - **`about:internet`** — URL を記録できなかったときに Windows が書く値。
+///   「インターネット由来」以上の情報が無いので、URL としては捨てる。
+/// - **`ReferrerUrl=C:\...\archive.zip`** — 書庫から展開したファイルには、
+///   URL ではなく **展開元の書庫のローカルパス** が入る。これは来歴そのもの
+///   （「この DLL はどの zip から出てきたか」）なので、`file://` URL に正規化して
+///   取得先として記録する。Downloads の中身の大半はこの形になる。
 fn parse_zone_identifier(text: &str) -> Option<OsOrigin> {
     let mut host_url = None;
     let mut referrer_url = None;
@@ -99,13 +108,20 @@ fn parse_zone_identifier(text: &str) -> Option<OsOrigin> {
         }
 
         match key.trim().to_ascii_lowercase().as_str() {
-            "hosturl" => host_url = Some(value.to_string()),
-            "referrerurl" => referrer_url = Some(value.to_string()),
+            "hosturl" => host_url = normalize_zone_url(value),
+            "referrerurl" => referrer_url = normalize_zone_url(value),
             _ => {}
         }
     }
 
-    if host_url.is_none() && referrer_url.is_none() {
+    // HostUrl が無く ReferrerUrl が書庫のローカルパスなら、取得先はその書庫。
+    // 「参照元」の枠に置いたままだと、URL 無しの記録として検索から漏れる。
+    let (url, referrer_url) = match (host_url, referrer_url) {
+        (None, Some(r)) if r.starts_with("file://") => (Some(r), None),
+        pair => pair,
+    };
+
+    if url.is_none() && referrer_url.is_none() {
         // ZoneId しか無いケース。「インターネット由来」とは分かるが URL が無いので、
         // 入手元としては記録しない。ここで空の Origin を作ると、
         // 「記録がある」と「URL が分からない」が混ざってしまう。
@@ -113,11 +129,52 @@ fn parse_zone_identifier(text: &str) -> Option<OsOrigin> {
     }
 
     Some(OsOrigin {
-        url: host_url,
+        url,
         referrer_url,
         source: OsOriginSource::ZoneIdentifier,
         raw: Some(text.to_string()),
     })
+}
+
+/// Zone.Identifier の URL 値を正規化する。
+///
+/// - `about:*`（`about:internet` など）→ 情報が無いので `None`
+/// - ローカルパス（`C:\...` / `\\server\share\...`）→ `file://` URL
+/// - それ以外はそのまま
+fn normalize_zone_url(value: &str) -> Option<String> {
+    let v = value.trim();
+    if v.is_empty() {
+        return None;
+    }
+    let lower = v.to_ascii_lowercase();
+    if lower.starts_with("about:") {
+        return None;
+    }
+    if let Some(url) = local_path_to_file_url(v) {
+        return Some(url);
+    }
+    Some(v.to_string())
+}
+
+/// Windows のローカルパスを `file://` URL にする。パスでなければ `None`。
+///
+/// `C:\a\b` → `file:///C:/a/b`、`\\nas\share\x` → `file://nas/share/x`。
+/// パーセントエンコードはしない — 検索で部分一致させたいので、人間が読む形のままにする。
+fn local_path_to_file_url(v: &str) -> Option<String> {
+    let bytes = v.as_bytes();
+    let is_drive = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/');
+    if is_drive {
+        return Some(format!("file:///{}", v.replace('\\', "/")));
+    }
+    if let Some(unc) = v.strip_prefix(r"\\") {
+        if !unc.is_empty() && !unc.starts_with('\\') {
+            return Some(format!("file://{}", unc.replace('\\', "/")));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -139,6 +196,48 @@ mod tests {
             Some("https://example.com/page")
         );
         assert_eq!(origin.source, OsOriginSource::ZoneIdentifier);
+    }
+
+    #[test]
+    fn about_internet_is_dropped() {
+        // URL を記録できなかったときの慣用値。情報が無いので記録しない。
+        let text = "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=about:internet\r\n";
+        assert!(parse_zone_identifier(text).is_none());
+
+        // 参照元があるなら、それだけは残す。
+        let text = "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=about:internet\r\n\
+                    ReferrerUrl=https://example.com/page\r\n";
+        let o = parse_zone_identifier(text).unwrap();
+        assert_eq!(o.url, None);
+        assert_eq!(o.referrer_url.as_deref(), Some("https://example.com/page"));
+    }
+
+    #[test]
+    fn extracted_from_archive_becomes_file_url_source() {
+        // 書庫から展開したファイル: ReferrerUrl に書庫のローカルパスが入る。
+        let text = "[ZoneTransfer]\r\nZoneId=3\r\n\
+                    ReferrerUrl=C:\\Users\\me\\Downloads\\pack.7z\r\n";
+        let o = parse_zone_identifier(text).unwrap();
+        // 取得先 = 書庫。参照元の枠には残さない。
+        assert_eq!(
+            o.url.as_deref(),
+            Some("file:///C:/Users/me/Downloads/pack.7z")
+        );
+        assert_eq!(o.referrer_url, None);
+    }
+
+    #[test]
+    fn local_path_conversion() {
+        assert_eq!(
+            local_path_to_file_url(r"D:\x\y.zip").as_deref(),
+            Some("file:///D:/x/y.zip")
+        );
+        assert_eq!(
+            local_path_to_file_url(r"\\nas\share\a.zip").as_deref(),
+            Some("file://nas/share/a.zip")
+        );
+        assert_eq!(local_path_to_file_url("https://example.com/a"), None);
+        assert_eq!(local_path_to_file_url("C:"), None);
     }
 
     #[test]
