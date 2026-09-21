@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "identifier": "io.github.file-origin",
   "build": {
-    "frontendDist": "../dist"
+    "frontendDist": "../web"
   },
   "app": {
     "windows": [

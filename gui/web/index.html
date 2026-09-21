@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>File Origin</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">File&nbsp;Origin</div>
+  <div class="search">
+    <input id="q" type="search" placeholder="ファイル名で検索（* ? が使えます）" autocomplete="off" spellcheck="false">
+    <input id="qhost" type="search" placeholder="入手元ホスト（例: example.com）" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-scan" class="ghost" title="ディレクトリを取り込む">取り込み</button>
+  <button id="btn-status" class="ghost" title="状態">状態</button>
+</header>
+
+<main>
+  <section class="list" aria-label="検索結果">
+    <div id="count" class="count">読み込み中…</div>
+    <ul id="results"></ul>
+  </section>
+
+  <section id="detail" class="detail" aria-label="詳細">
+    <div class="empty">左の一覧からファイルを選ぶと、来歴が表示されます。</div>
+  </section>
+</main>
+
+<dialog id="dlg-scan">
+  <form method="dialog">
+    <h2>ディレクトリを取り込む</h2>
+    <label>パス
+      <input id="scan-path" type="text" placeholder="例: C:\Users\you\Downloads" spellcheck="false">
+    </label>
+    <label class="check">
+      <input id="scan-hash" type="checkbox"> SHA-256 も計算する（大きいファイルでは時間がかかります）
+    </label>
+    <p class="hint">ファイルは移動もコピーもされません。読み取りだけです。</p>
+    <menu>
+      <button value="cancel" class="ghost">やめる</button>
+      <button id="scan-go" value="go" class="primary">取り込む</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlg-status">
+  <form method="dialog">
+    <h2>状態</h2>
+    <div id="status-body"></div>
+    <menu><button value="ok" class="primary">閉じる</button></menu>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

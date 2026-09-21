@@ -3,8 +3,10 @@
 Cargo.lock.orig
 
 # GUI (M5)
+# gui/web はバンドラを使わない手書きのフロントエンド＝ソースなので追跡する。
+# dist という名前に置いていたときは、この ignore に掛かって CI が
+# 「frontendDist が存在しない」で落ちた。
 /gui/node_modules
-/gui/dist
 /gui/src-tauri/target
 
 # 拡張機能 (M4)
