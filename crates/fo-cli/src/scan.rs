@@ -28,12 +28,16 @@ pub fn run(platform: &dyn Platform, store: &Store, root: &Path, opts: ScanOption
         ScanEvent::File {
             verdict,
             os_origins_recorded,
+            path_changed,
             ..
         } => {
             s.seen += 1;
             s.origins_found += os_origins_recorded;
             match verdict {
                 Verdict::New => s.added += 1,
+                // 同一ボリューム内の移動は Verdict::Same になる（識別子が変わらない）。
+                // 利用者から見れば移動なので、そう数える。
+                Verdict::Same { .. } if path_changed => s.moved += 1,
                 Verdict::Same { .. } => s.unchanged += 1,
                 Verdict::Moved { .. } => s.moved += 1,
                 Verdict::Copied { .. } => s.copied += 1,
