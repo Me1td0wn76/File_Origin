@@ -65,14 +65,20 @@ pub fn run(
     }
     println!("  入手元取得: {}", summary.origins_found);
     if summary.errors > 0 {
-        println!("  エラー    : {}（権限不足など。処理は継続しました）", summary.errors);
+        println!(
+            "  エラー    : {}（権限不足など。処理は継続しました）",
+            summary.errors
+        );
     }
 
     // 入手元を読みに行くのは新規記録のときだけなので、
     // 新規が 0 件なら「取れなかった」と言うのは筋違い。
     if summary.origins_found == 0 && summary.added > 0 {
         println!();
-        println!("新規 {} 件のうち、入手元が取れたものはありませんでした。", summary.added);
+        println!(
+            "新規 {} 件のうち、入手元が取れたものはありませんでした。",
+            summary.added
+        );
         println!("`fo doctor` でこの環境の取得経路を確認してください。");
     }
 
@@ -170,7 +176,10 @@ fn record_one(
         Verdict::Same { file_id } => {
             // 同一ボリューム内の移動・リネームはここに来る（識別子が変わらないため）。
             // パスが違えば、それが移動の記録になる。
-            let current = known.iter().find(|r| r.id == file_id).map(|r| &r.current_path);
+            let current = known
+                .iter()
+                .find(|r| r.id == file_id)
+                .map(|r| &r.current_path);
             if current.is_some_and(|p| p != path) {
                 store.record_path(file_id, path)?;
                 summary.moved += 1;
@@ -178,8 +187,7 @@ fn record_one(
                 summary.unchanged += 1;
             }
             // 未計算だったハッシュを今回計算したなら埋める。
-            if let (Some(d), Some(rec)) =
-                (&observed.sha256, known.iter().find(|r| r.id == file_id))
+            if let (Some(d), Some(rec)) = (&observed.sha256, known.iter().find(|r| r.id == file_id))
             {
                 if rec.sha256.is_none() {
                     store.set_sha256(file_id, d)?;
@@ -200,7 +208,10 @@ fn record_one(
                 .as_ref()
                 .expect("Updated はハッシュ比較の結果なので必ずある");
             store.update_content(file_id, d, observed.size, mtime)?;
-            if known.iter().any(|r| r.id == file_id && r.current_path != path) {
+            if known
+                .iter()
+                .any(|r| r.id == file_id && r.current_path != path)
+            {
                 store.record_path(file_id, path)?;
             }
             summary.updated += 1;

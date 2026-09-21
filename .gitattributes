@@ -1,0 +1,12 @@
+# 改行コードはリポジトリ内では常に LF に正規化する。
+# Windows で core.autocrlf=true でも、シェルスクリプトが CRLF になって
+# Linux CI で "\r: command not found" になるのを防ぐ。
+*           text=auto
+*.sh        text eol=lf
+*.rs        text eol=lf
+*.toml      text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+*.md        text
+*.png       binary
+*.ico       binary
