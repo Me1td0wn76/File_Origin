@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
+notify = { workspace = true }
+interprocess = { workspace = true }
 
 # --- OS 固有依存 -------------------------------------------------------
 # workspace 内でこの種の依存を書いてよいのはこのクレートだけ。
