@@ -97,7 +97,9 @@ where
         Some(rec) => {
             if path_exists(&rec.current_path) {
                 // 旧パスにも実体が残っている → コピー。
-                Verdict::Copied { from_file_id: rec.id }
+                Verdict::Copied {
+                    from_file_id: rec.id,
+                }
             } else {
                 // 旧パスが消えている → 移動。別ボリュームへ移した場合もここに来る
                 // （その場合は安定識別子が変わるため 1 では捕まらない）。
@@ -124,7 +126,14 @@ mod tests {
         }
     }
 
-    fn record(id: i64, vol: &str, key: &str, path: &str, size: u64, hash: Option<&str>) -> FileRecord {
+    fn record(
+        id: i64,
+        vol: &str,
+        key: &str,
+        path: &str,
+        size: u64,
+        hash: Option<&str>,
+    ) -> FileRecord {
         FileRecord {
             id,
             stable_id: sid(vol, key),
@@ -154,14 +163,20 @@ mod tests {
         let known = vec![record(1, "v1", "f1", "/a/x.zip", 100, Some("aa"))];
         // 名前もパスも変わったが、識別子が同じなら同一ファイル。
         let obs = observed("v1", "f1", "/b/renamed.zip", 100, Some("aa"));
-        assert_eq!(classify(&obs, &known, NOTHING_EXISTS), Verdict::Same { file_id: 1 });
+        assert_eq!(
+            classify(&obs, &known, NOTHING_EXISTS),
+            Verdict::Same { file_id: 1 }
+        );
     }
 
     #[test]
     fn same_id_different_hash_is_update() {
         let known = vec![record(1, "v1", "f1", "/a/x.zip", 100, Some("aa"))];
         let obs = observed("v1", "f1", "/a/x.zip", 120, Some("bb"));
-        assert_eq!(classify(&obs, &known, EVERYTHING_EXISTS), Verdict::Updated { file_id: 1 });
+        assert_eq!(
+            classify(&obs, &known, EVERYTHING_EXISTS),
+            Verdict::Updated { file_id: 1 }
+        );
     }
 
     #[test]
@@ -171,7 +186,10 @@ mod tests {
         let obs = observed("v2", "f9", "/mnt/usb/x.zip", 100, Some("aa"));
         assert_eq!(
             classify(&obs, &known, NOTHING_EXISTS),
-            Verdict::Moved { file_id: 1, from: PathBuf::from("/a/x.zip") }
+            Verdict::Moved {
+                file_id: 1,
+                from: PathBuf::from("/a/x.zip")
+            }
         );
     }
 
@@ -199,7 +217,10 @@ mod tests {
         // 識別子が一致するなら、ハッシュが無くても同一ファイルと言える。
         let known = vec![record(1, "v1", "f1", "/a/x.zip", 100, None)];
         let obs = observed("v1", "f1", "/a/x.zip", 100, Some("aa"));
-        assert_eq!(classify(&obs, &known, EVERYTHING_EXISTS), Verdict::Same { file_id: 1 });
+        assert_eq!(
+            classify(&obs, &known, EVERYTHING_EXISTS),
+            Verdict::Same { file_id: 1 }
+        );
     }
 
     #[test]
