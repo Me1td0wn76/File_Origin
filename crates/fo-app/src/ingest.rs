@@ -26,6 +26,12 @@ pub struct Ingested {
     pub verdict: Verdict,
     /// OS メタデータから取り込めた入手元の件数。新規・コピーのときだけ読みに行く。
     pub os_origins_recorded: usize,
+    /// 記録済みのパスと違う場所で見つかった＝移動していた。
+    ///
+    /// 同一ボリューム内の移動は安定識別子が変わらないので `Verdict::Same` になる。
+    /// 判定としては正しいが、**利用者から見れば「移動」**。
+    /// この区別が無いと、リネームしたファイルが「変更なし」と表示される。
+    pub path_changed: bool,
 }
 
 /// ファイルを DB に取り込む。既知なら状態を更新し、未知なら新規に記録する。
@@ -68,6 +74,7 @@ pub fn ingest_file(
 
     let verdict = classify(&observed, &known, |p| p.exists());
     let mut os_origins_recorded = 0;
+    let mut path_changed = false;
 
     let file_id = match &verdict {
         Verdict::Same { file_id } => {
@@ -77,6 +84,7 @@ pub fn ingest_file(
             // パスが違えば、それが移動の記録になる。
             if rec.is_some_and(|r| r.current_path != path) {
                 store.record_path(file_id, path)?;
+                path_changed = true;
             }
             // 未計算だったハッシュを今回計算したなら埋める。
             if let (Some(d), Some(r)) = (&observed.sha256, rec) {
@@ -97,6 +105,7 @@ pub fn ingest_file(
             store.update_stable_id(*file_id, &stable_id)?;
             store.record_path(*file_id, path)?;
             store.mark_present(*file_id)?;
+            path_changed = true;
             *file_id
         }
 
@@ -111,6 +120,7 @@ pub fn ingest_file(
                 .any(|r| r.id == *file_id && r.current_path != path)
             {
                 store.record_path(*file_id, path)?;
+                path_changed = true;
             }
             *file_id
         }
@@ -147,6 +157,7 @@ pub fn ingest_file(
         file_id,
         verdict,
         os_origins_recorded,
+        path_changed,
     })
 }
 
