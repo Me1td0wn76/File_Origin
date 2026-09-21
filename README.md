@@ -263,14 +263,14 @@ fo show ./setup.zip  または  GUI でファイルを選択
 
 | クレート | 種別 | 責務 | OS 依存 |
 | --- | --- | --- | --- |
-| `fo-core` | lib | ドメインモデル・ユースケース | ❌ なし |
-| `fo-platform` | lib | **OS 抽象化 trait とその実装** | ✅ **ここだけ** |
-| `fo-store` | lib | SQLite 永続化・マイグレーション | ❌ なし |
-| `fo-watcher` | lib | 監視・スキャン・同一性解決のエンジン | ❌（`fo-platform` 経由） |
-| `fo-ipc` | lib | IPC のメッセージ定義とクライアント / サーバ | ❌（`fo-platform` 経由） |
-| `fo-daemon` | bin | 常駐サービス本体 | ❌ |
-| `fo-cli` | bin | コマンドラインインターフェース | ❌ |
-| `fo-nativehost` | bin | Native Messaging ホスト | ❌ |
+| `fo-core` | lib | ドメインモデル・ユースケース | × なし |
+| `fo-platform` | lib | **OS 抽象化 trait とその実装** | ○ **ここだけ** |
+| `fo-store` | lib | SQLite 永続化・マイグレーション | × なし |
+| `fo-watcher` | lib | 監視・スキャン・同一性解決のエンジン | ×（`fo-platform` 経由） |
+| `fo-ipc` | lib | IPC のメッセージ定義とクライアント / サーバ | ×（`fo-platform` 経由） |
+| `fo-daemon` | bin | 常駐サービス本体 | × |
+| `fo-cli` | bin | コマンドラインインターフェース | × |
+| `fo-nativehost` | bin | Native Messaging ホスト | × |
 
 > **不変条件（CI で機械的に検査する）**
 > `fo-platform` 以外のクレートに `#[cfg(windows)]` / `#[cfg(target_os = "linux")]` / `windows-rs` / `nix` が現れたら **ビルドを落とす**。
@@ -383,7 +383,7 @@ pub fn current() -> Box<dyn Platform> {
 | --- | --- | --- |
 | **安定識別子** | `GetFileInformationByHandleEx` / `FILE_ID_INFO`<br/>（`VolumeSerialNumber` + `FileId128`） | `statx()` の `(st_dev, st_ino)` |
 | **識別子 → パス逆引き** | `OpenFileById` で **OS がネイティブ対応** | **不可** → DB 索引＋再スキャンで代替 |
-| **入手元メタデータ** | NTFS 代替データストリーム<br/>`file:Zone.Identifier`<br/>（`ZoneId` / `ReferrerUrl` / `HostUrl`）<br/>✅ 主要ブラウザが自動で書く | ① 拡張属性 `user.xdg.origin.url`<br/>　→ ⚠️ wget / curl `--xattr` のみ<br/>② GVFS メタデータ `metadata::download-uri`<br/>　→ Firefox はここに書く（オプトイン） |
+| **入手元メタデータ** | NTFS 代替データストリーム<br/>`file:Zone.Identifier`<br/>（`ZoneId` / `ReferrerUrl` / `HostUrl`）<br/>○ 主要ブラウザが自動で書く | ① 拡張属性 `user.xdg.origin.url`<br/>　→ △ wget / curl `--xattr` のみ<br/>② GVFS メタデータ `metadata::download-uri`<br/>　→ Firefox はここに書く（オプトイン） |
 | **リアルタイム監視** | `ReadDirectoryChangesW` | `inotify` |
 | **網羅的な変更検出**<br/>（任意・要特権） | NTFS USN Change Journal<br/>（要 Administrator、保持は約 1 週間） | `fanotify`（`FAN_REPORT_FID`）<br/>（要 `CAP_SYS_ADMIN`） |
 | **上記が使えない場合** | 差分スキャン（**既定**） | 差分スキャン（**既定**） |
@@ -418,7 +418,7 @@ Windows は `OpenFileById` で OS が直接答えられるが、Linux に inode 
 **既定では両 OS とも差分スキャンで動く。** 特権を与えれば精度と速度が上がる、という位置づけ。
 これは設計方針 P4（劣化して動く）と P6 の「管理者 / root を要求しない」を両立させるための選択で、`JournalCapability` が `Full` / `None` を返すことで表現される。
 
-> ⚠️ USN Journal の 2 つの限界を見落とさないこと。
+> △ USN Journal の 2 つの限界を見落とさないこと。
 > ① **保持期間は約 1 週間** — それより古いカーソルからは読み直せず、結局スキャンが要る
 > ② **Administrator 権限が必要** — ボリュームハンドル `\\.\C:` を開く時点で昇格が要る
 > 詳細は [docs/prior-art.md §6 F2](docs/prior-art.md#f2-️-usn-change-journal--完全に追えるは誤り)。
@@ -426,24 +426,24 @@ Windows は `OpenFileById` で OS が直接答えられるが、Linux に inode 
 ```
 $ fo doctor
 Platform          : Linux (x86_64)
-Stable file ID    : ✅ statx (st_dev, st_ino)
-Reverse lookup    : ⚠️  OS 非対応 — DB 索引で代替します
-Origin metadata   : ⚠️  xattr (user.xdg.origin.url) — 読めますが、
+Stable file ID    : ○ statx (st_dev, st_ino)
+Reverse lookup    : △  OS 非対応 — DB 索引で代替します
+Origin metadata   : △  xattr (user.xdg.origin.url) — 読めますが、
                        主要ブラウザは書きません（wget/curl --xattr のみ）
                        GVFS メタデータの読み取りは無効（オプトイン）
                        → ブラウザ拡張の導入を強く推奨します
-Realtime watch    : ✅ inotify
-Change journal    : ⚠️  fanotify 利用不可（CAP_SYS_ADMIN なし）
+Realtime watch    : ○ inotify
+Change journal    : △  fanotify 利用不可（CAP_SYS_ADMIN なし）
                        → 起動時の差分スキャンで補正します（既定動作）
-IPC               : ✅ $XDG_RUNTIME_DIR/file-origin.sock
-Autostart         : ✅ systemd --user
+IPC               : ○ $XDG_RUNTIME_DIR/file-origin.sock
+Autostart         : ○ systemd --user
 ```
 
 ---
 
 ## 8. ファイル同一性の追跡戦略
 
-> ⚠️ **SHA-256 だけではファイルの移動先は分からない。** ハッシュは「同じ内容か」を答えるが、「どこへ行ったか」も「コピーか移動か」も答えない。
+> △ **SHA-256 だけではファイルの移動先は分からない。** ハッシュは「同じ内容か」を答えるが、「どこへ行ったか」も「コピーか移動か」も答えない。
 > File Origin は **OS の安定識別子を主、ハッシュを従** として組み合わせる。
 
 ### 8.1 同一性判定のはしご
@@ -494,11 +494,11 @@ Autostart         : ✅ systemd --user
 | 1 | **ブラウザ拡張**（Native Messaging） | `finalUrl` / `referrer` / `filename` / `mime` / `bytes` / 時刻 | `certain` | 最も豊富で正確。**本命**<br/>**Linux では事実上これが必須**（下記） |
 | 2 | **OS メタデータ（Windows）** | `Zone.Identifier` の `HostUrl` / `ReferrerUrl` / `ZoneId` | `high` | 主要ブラウザが自動で書く。**拡張導入前のファイルを救済できる** |
 | 3 | **手動登録** | ユーザー入力 | `certain` | `fo add --url` |
-| 4 | **OS メタデータ（Linux / xattr）** | `user.xdg.origin.url` | `high` | ⚠️ **主要ブラウザは書かない**。wget / curl の `--xattr` のみ |
+| 4 | **OS メタデータ（Linux / xattr）** | `user.xdg.origin.url` | `high` | △ **主要ブラウザは書かない**。wget / curl の `--xattr` のみ |
 | 5 | **GVFS メタデータ（Linux）** | `metadata::download-uri` | `medium` | Firefox はここに書く。**オプトイン**（プライベートブラウジングの記録を含みうる） |
 | 6 | **ブラウザ履歴 DB** | 履歴上のダウンロード記録 | `medium` | **オプトイン**。DB ロック・プライバシーの問題あり |
 
-> ⚠️ **Linux では OS メタデータ経路が当てにならない。**
+> △ **Linux では OS メタデータ経路が当てにならない。**
 > freedesktop.org は `user.xdg.origin.url` を標準として定義しているが、**Firefox は書かず**（GVFS メタデータに書く）、**Chrome は実装後に撤回した**。
 > したがって Linux では **ブラウザ拡張（M4）が実質的な必須機能**になる。Windows は `Zone.Identifier` があるため M2 だけでも成立する。
 > 根拠は [docs/prior-art.md §2.3](docs/prior-art.md#23-linux--️-当てにならない)。
@@ -692,31 +692,31 @@ fo export --format json             # データの持ち出し（ロックイン
 ## 12. リポジトリ構成
 
 ```
-凡例: **✅ = 雛型あり** ／ 印なし = 未作成（設計のみ）
+凡例: **○ = 雛型あり** ／ 印なし = 未作成（設計のみ）
 
 ```
 File_Origin/
-├─ Cargo.toml                 ✅ workspace（依存はここに集約）
-├─ rust-toolchain.toml        ✅
+├─ Cargo.toml                 ○ workspace（依存はここに集約）
+├─ rust-toolchain.toml        ○
 ├─ crates/
-│  ├─ fo-core/                ✅ ドメイン + ユースケース（OS 非依存）
+│  ├─ fo-core/                ○ ドメイン + ユースケース（OS 非依存）
 │  │  └─ src/
-│  │     ├─ model.rs          ✅ FileRecord / Origin / Confidence
-│  │     ├─ identity.rs       ✅ 同一性判定のはしご（§8.1 の実装）
-│  │     └─ hash.rs           ✅ SHA-256
-│  ├─ fo-platform/            ✅ ★ OS 抽象化層 — cfg はここだけ
+│  │     ├─ model.rs          ○ FileRecord / Origin / Confidence
+│  │     ├─ identity.rs       ○ 同一性判定のはしご（§8.1 の実装）
+│  │     └─ hash.rs           ○ SHA-256
+│  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ
 │  │  └─ src/
-│  │     ├─ lib.rs            ✅ trait 定義・型・current()
-│  │     ├─ windows/          ✅ #[cfg(windows)]  windows-sys
+│  │     ├─ lib.rs            ○ trait 定義・型・current()
+│  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys
 │  │     │  └─ {identity,origin,paths}.rs
 │  │     │     ＋ 今後: {watcher,usn,ipc,autostart}.rs
-│  │     ├─ linux/            ✅ #[cfg(target_os = "linux")]  xattr
+│  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr
 │  │     │  └─ {identity,origin,paths}.rs
 │  │     │     ＋ 今後: {gvfs,watcher,fanotify,ipc,autostart}.rs
-│  │     └─ mock/             ✅ テスト用のインメモリ実装
-│  ├─ fo-store/               ✅ SQLite + マイグレーション
+│  │     └─ mock/             ○ テスト用のインメモリ実装
+│  ├─ fo-store/               ○ SQLite + マイグレーション
 │  │  └─ migrations/0001_init.sql
-│  ├─ fo-cli/                 ✅ CLI (bin `fo`)
+│  ├─ fo-cli/                 ○ CLI (bin `fo`)
 │  ├─ fo-watcher/                監視・スキャン・同一性解決エンジン (M3)
 │  ├─ fo-ipc/                    JSON-RPC のメッセージ定義 (M3)
 │  ├─ fo-daemon/                 常駐サービス (bin) (M3)
@@ -735,15 +735,15 @@ File_Origin/
 ├─ extension/                    ブラウザ拡張 (M4)
 ├─ packaging/                    インストーラ (M6)
 ├─ scripts/
-│  └─ arch-guard.sh           ✅ アーキテクチャ不変条件の検査（CI と共用）
+│  └─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
 ├─ docs/
-│  ├─ adr/                    ✅ Architecture Decision Records
-│  └─ prior-art.md            ✅ 既存 OSS・製品の調査結果
-├─ .claude/skills/            ✅ Claude Code 用のプロジェクト固有 skill
+│  ├─ adr/                    ○ Architecture Decision Records
+│  └─ prior-art.md            ○ 既存 OSS・製品の調査結果
+├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill
 │  ├─ platform-layer/            OS 固有機能を追加するとき
 │  ├─ origin-source/             入手元の取得経路を追加するとき
 │  └─ new-crate/                 workspace にクレートを足すとき
-└─ .github/workflows/ci.yml   ✅ CI（Windows / Linux マトリクス）
+└─ .github/workflows/ci.yml   ○ CI（Windows / Linux マトリクス）
 ```
 
 ### `.claude/skills/` について
@@ -821,20 +821,20 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
-| 安定識別子 | ✅ | ✅ | Win: `FILE_ID_INFO` (FFI) / Linux: `statx` |
+| 安定識別子 | ○ | ○ | Win: `FILE_ID_INFO` (FFI) / Linux: `statx` |
 | 識別子→パス逆引き | ⛔ | ⛔ | Win は M3 で実装予定。Linux は OS に存在しない |
-| 入手元メタデータ | ✅ Zone.Identifier | ⚠️ xattr のみ | GVFS は M2（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
-| データ配置先 | ✅ | ✅ | `%LOCALAPPDATA%` / XDG |
-| SQLite スキーマ | ✅ | ✅ | マイグレーション込み |
-| 同一性判定のはしご | ✅ | ✅ | 純粋関数・テスト済み |
-| SHA-256 | ✅ | ✅ | 遅延計算（[ADR-0007](docs/adr/0007-hashing-strategy.md)） |
+| 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は M2（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
+| データ配置先 | ○ | ○ | `%LOCALAPPDATA%` / XDG |
+| SQLite スキーマ | ○ | ○ | マイグレーション込み |
+| 同一性判定のはしご | ○ | ○ | 純粋関数・テスト済み |
+| SHA-256 | ○ | ○ | 遅延計算（[ADR-0007](docs/adr/0007-hashing-strategy.md)） |
 | ファイル監視 | ⛔ | ⛔ | M3 |
 | 変更ジャーナル | ⛔ | ⛔ | M3（任意機能・[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
 | IPC / デーモン | ⛔ | ⛔ | M3 |
 | ブラウザ拡張 | ⛔ | ⛔ | M4。**Linux ではこれが必須** |
 | GUI | ⛔ | ⛔ | M5 |
 
-✅ 実装済み ／ ⚠️ 実装済みだが制約あり ／ ⛔ 未実装
+○ 実装済み ／ △ 実装済みだが制約あり ／ ⛔ 未実装
 
 ### CI マトリクス
 
@@ -861,7 +861,7 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | --- | --- |
 | **ネットワーク** | **外部送信を一切行わない**。テレメトリなし。コアにネットワーク依存クレートを入れない |
 | **データの所在** | ローカルの SQLite のみ。`fo export` でいつでも持ち出せる |
-| **DB の保護** | ⚠️ **暗号化しない**（[ADR-0006](docs/adr/0006-no-db-encryption-v1.md)）。平文 SQLite を OS のユーザー権限で守る。同じユーザー権限で動く攻撃者からは守れない — ブラウザの履歴や Cookie と同じ前提。機密性が要るならディスク暗号化（BitLocker / LUKS）を使うこと |
+| **DB の保護** | △ **暗号化しない**（[ADR-0006](docs/adr/0006-no-db-encryption-v1.md)）。平文 SQLite を OS のユーザー権限で守る。同じユーザー権限で動く攻撃者からは守れない — ブラウザの履歴や Cookie と同じ前提。機密性が要るならディスク暗号化（BitLocker / LUKS）を使うこと |
 | **IPC** | 現在のユーザーのみアクセス可（Windows: DACL / Linux: `0600`） |
 | **Native Messaging** | マニフェストの `allowed_origins` / `allowed_extensions` で拡張 ID を固定 |
 | **拡張機能の権限** | `downloads` と `nativeMessaging` のみ。`<all_urls>` は要求しない |
@@ -881,16 +881,16 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 
 | # | 論点 | 結論 | 状態 |
 | --- | --- | --- | --- |
-| D1 | ライセンス | **MIT**（[ADR-0001](docs/adr/0001-license-mit.md)） | ✅ 決定 |
-| D2 | 既存 OSS・製品の調査 | [`docs/prior-art.md`](docs/prior-art.md)。**競合 1 件**（WhereFrom）発見、設計の誤り 2 件を修正 | ✅ 完了 |
-| D3 | DB 暗号化 | **v1 では暗号化しない。** 鍵管理のコストが利得を上回り、脅威モデルにも合わないため。ディスク暗号化（BitLocker / LUKS）を案内する（[ADR-0006](docs/adr/0006-no-db-encryption-v1.md)） | ✅ 決定 |
-| D4 | macOS 対応 | **v1 のスコープ外。** ただし `fo-platform/macos/` を足せば済む設計を維持する。`kMDItemWhereFroms` で実現可能 | ✅ 方針確定 |
+| D1 | ライセンス | **MIT**（[ADR-0001](docs/adr/0001-license-mit.md)） | ○ 決定 |
+| D2 | 既存 OSS・製品の調査 | [`docs/prior-art.md`](docs/prior-art.md)。**競合 1 件**（WhereFrom）発見、設計の誤り 2 件を修正 | ○ 完了 |
+| D3 | DB 暗号化 | **v1 では暗号化しない。** 鍵管理のコストが利得を上回り、脅威モデルにも合わないため。ディスク暗号化（BitLocker / LUKS）を案内する（[ADR-0006](docs/adr/0006-no-db-encryption-v1.md)） | ○ 決定 |
+| D4 | macOS 対応 | **v1 のスコープ外。** ただし `fo-platform/macos/` を足せば済む設計を維持する。`kMDItemWhereFroms` で実現可能 | ○ 方針確定 |
 | D5 | GUI フロントエンド | **React + TypeScript + Vite（暫定）。** 貢献者の母数と仮想リスト等のエコシステムを優先。M5 着手時に再確認する | 🔶 暫定 |
 | D6 | パッケージ名・配布 ID | 命名規則を **`io.github.<handle>.file_origin`** に固定（Native Messaging の制約に合わせ小文字・アンダースコア）。`<handle>` は公開リポジトリ確定時に 1 箇所で定義する | 🔶 規則のみ確定 |
-| D7 | 大容量ファイルのハッシュ | **常に全体 SHA-256。ただし記録と切り離して遅延計算する。** 部分ハッシュは同一性判定に使えない（[ADR-0007](docs/adr/0007-hashing-strategy.md)） | ✅ 決定 |
-| D8 | 想定ユーザーの再定義 | **§2 を書き換えた。** ドメイン特化ツールの外側にあるファイルが居場所であることを明示 | ✅ 完了 |
-| D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ✅ 決定 |
-| D10 | WhereFrom との関係 | **差分の明示に留める。** 相手は Windows 専用・CLI のみ・ごく初期段階でスコープが異なり、現時点で協調する対象が無い。Zone.Identifier のパース実装は参考にし、その際はクレジットする | ✅ 決定 |
+| D7 | 大容量ファイルのハッシュ | **常に全体 SHA-256。ただし記録と切り離して遅延計算する。** 部分ハッシュは同一性判定に使えない（[ADR-0007](docs/adr/0007-hashing-strategy.md)） | ○ 決定 |
+| D8 | 想定ユーザーの再定義 | **§2 を書き換えた。** ドメイン特化ツールの外側にあるファイルが居場所であることを明示 | ○ 完了 |
+| D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ○ 決定 |
+| D10 | WhereFrom との関係 | **差分の明示に留める。** 相手は Windows 専用・CLI のみ・ごく初期段階でスコープが異なり、現時点で協調する対象が無い。Zone.Identifier のパース実装は参考にし、その際はクレジットする | ○ 決定 |
 
 ---
 
@@ -898,7 +898,7 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
-| **M0** 設計・調査 | ✅ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ✅ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
+| **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
 | **M1** コア + CLI | 🔶 `fo-core` / `fo-store` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `stats`<br/>**残: ビルド検証・手動登録・検索** | `fo` コマンドが動く |
 | **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
