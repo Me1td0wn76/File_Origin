@@ -288,6 +288,7 @@ dependencies = [
  "fo-ipc",
  "fo-platform",
  "fo-store",
+ "serde_json",
 ]
 
 [[package]]
