@@ -121,13 +121,17 @@ fn main() -> Result<()> {
     let log = Logger::open(&platform.paths().log_dir(), to_stderr, cli.verbose);
 
     let db_path = cli.db.unwrap_or_else(|| platform.paths().database_path());
-    let store = Store::open(&db_path).map_err(|e| {
-        // DB が開けないのは致命的。ログに残してから終わる。
-        // 窓が無い状態で黙って死ぬと、原因を追う手がかりがゼロになる。
-        log.log(&format!("[致命] DB を開けません {}: {e}", db_path.display()));
-        e
-    })
-    .with_context(|| format!("DB を開けません: {}", db_path.display()))?;
+    let store = Store::open(&db_path)
+        .map_err(|e| {
+            // DB が開けないのは致命的。ログに残してから終わる。
+            // 窓が無い状態で黙って死ぬと、原因を追う手がかりがゼロになる。
+            log.log(&format!(
+                "[致命] DB を開けません {}: {e}",
+                db_path.display()
+            ));
+            e
+        })
+        .with_context(|| format!("DB を開けません: {}", db_path.display()))?;
 
     let raw_roots = if cli.roots.is_empty() {
         platform.paths().default_download_dirs()
@@ -143,7 +147,10 @@ fn main() -> Result<()> {
     for r in raw_roots {
         match platform.paths().canonical(&r) {
             Ok(c) => roots.push(c),
-            Err(e) => log.log(&format!("[警告] 監視対象を解決できません {}: {e}", r.display())),
+            Err(e) => log.log(&format!(
+                "[警告] 監視対象を解決できません {}: {e}",
+                r.display()
+            )),
         }
     }
     if roots.is_empty() {
@@ -152,21 +159,27 @@ fn main() -> Result<()> {
 
     // 先に IPC を張る。既に動いているデーモンがあればここで失敗し、
     // 二重起動で DB を取り合うのを防げる。
-    let listener = platform.ipc().bind().map_err(|e| {
-        log.log(&format!(
-            "[致命] IPC を開けません（既にデーモンが動いていませんか）: {} — {e}",
-            platform.ipc().endpoint_display()
-        ));
-        e
-    })
-    .with_context(|| {
-        format!(
-            "IPC を開けません（既にデーモンが動いていませんか）: {}",
-            platform.ipc().endpoint_display()
-        )
-    })?;
+    let listener = platform
+        .ipc()
+        .bind()
+        .map_err(|e| {
+            log.log(&format!(
+                "[致命] IPC を開けません（既にデーモンが動いていませんか）: {} — {e}",
+                platform.ipc().endpoint_display()
+            ));
+            e
+        })
+        .with_context(|| {
+            format!(
+                "IPC を開けません（既にデーモンが動いていませんか）: {}",
+                platform.ipc().endpoint_display()
+            )
+        })?;
 
-    log.log(&format!("起動 file-origin daemon {}", env!("CARGO_PKG_VERSION")));
+    log.log(&format!(
+        "起動 file-origin daemon {}",
+        env!("CARGO_PKG_VERSION")
+    ));
     log.log(&format!("  DB   : {}", db_path.display()));
     log.log(&format!("  IPC  : {}", platform.ipc().endpoint_display()));
     log.log(&format!("  ログ : {}", log.path().display()));
@@ -415,6 +428,7 @@ fn dispatch(d: &Daemon, req: Request) -> Response {
         }
 
         Request::Shutdown => {
+            d.log.log("停止を要求されました。");
             d.shutdown.store(true, Ordering::Relaxed);
             Response::Ok
         }
@@ -423,7 +437,23 @@ fn dispatch(d: &Daemon, req: Request) -> Response {
 
 fn record(d: &Daemon, report: DownloadReport) -> Response {
     let path = fo_app::browser::normalize_reported_path(&report.path);
+
+    // 拡張からの報告が届いているかは、拡張側からは確かめようがない。
+    // ここに残しておかないと M4 の切り分けができなくなる。
+    // URL は既定で伏せる（--verbose で全体）。
+    d.log.log(&format!(
+        "[報告] {} ← {}{}",
+        path.display(),
+        d.log.url(report.url.as_deref()),
+        report
+            .browser
+            .as_deref()
+            .map(|b| format!(" ({b})"))
+            .unwrap_or_default()
+    ));
+
     if !fo_app::browser::is_acceptable(&path) {
+        d.log.log("[拒否] ダウンロード途中のファイル名");
         return Response::Error {
             message: format!("ダウンロード途中のファイル名です: {}", path.display()),
         };
@@ -440,11 +470,21 @@ fn record(d: &Daemon, report: DownloadReport) -> Response {
 
     let store = d.store.lock().expect("store mutex");
     match fo_app::record_download(d.platform.as_ref(), &store, &app_report) {
-        Ok((ingested, _)) => Response::Recorded {
-            file_id: ingested.file_id,
-            verdict: label(&ingested.verdict, ingested.path_changed).to_string(),
-        },
-        Err(e) => err(e),
+        Ok((ingested, _)) => {
+            d.log.log(&format!(
+                "[記録] id={} {}",
+                ingested.file_id,
+                label(&ingested.verdict, ingested.path_changed)
+            ));
+            Response::Recorded {
+                file_id: ingested.file_id,
+                verdict: label(&ingested.verdict, ingested.path_changed).to_string(),
+            }
+        }
+        Err(e) => {
+            d.log.log(&format!("[拒否] {e}"));
+            err(e)
+        }
     }
 }
 
