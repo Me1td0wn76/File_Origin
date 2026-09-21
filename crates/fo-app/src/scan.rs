@@ -39,6 +39,8 @@ pub enum ScanEvent<'a> {
         path: &'a Path,
         verdict: &'a Verdict,
         os_origins_recorded: usize,
+        /// 記録済みのパスと違う場所で見つかった＝移動していた。
+        path_changed: bool,
     },
     /// 読めなかった。処理は継続する。
     Error { path: &'a Path, error: Error },
@@ -169,6 +171,7 @@ fn walk(
                 path: &path,
                 verdict: &ingested.verdict,
                 os_origins_recorded: ingested.os_origins_recorded,
+                path_changed: ingested.path_changed,
             }),
             Err(error) => on_event(ScanEvent::Error { path: &path, error }),
         }
