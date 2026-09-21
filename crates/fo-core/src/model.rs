@@ -185,10 +185,22 @@ mod tests {
 
     #[test]
     fn extracts_host() {
-        assert_eq!(host_of("https://cdn.Example.com/a/b.zip").as_deref(), Some("cdn.example.com"));
-        assert_eq!(host_of("http://example.com:8080/x").as_deref(), Some("example.com"));
-        assert_eq!(host_of("https://user:pw@example.com/x").as_deref(), Some("example.com"));
-        assert_eq!(host_of("https://example.com").as_deref(), Some("example.com"));
+        assert_eq!(
+            host_of("https://cdn.Example.com/a/b.zip").as_deref(),
+            Some("cdn.example.com")
+        );
+        assert_eq!(
+            host_of("http://example.com:8080/x").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(
+            host_of("https://user:pw@example.com/x").as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(
+            host_of("https://example.com").as_deref(),
+            Some("example.com")
+        );
     }
 
     #[test]
@@ -204,8 +216,6 @@ mod tests {
             OriginSource::BrowserExt.default_confidence()
                 > OriginSource::ZoneIdentifier.default_confidence()
         );
-        assert!(
-            OriginSource::Xattr.default_confidence() > OriginSource::Gvfs.default_confidence()
-        );
+        assert!(OriginSource::Xattr.default_confidence() > OriginSource::Gvfs.default_confidence());
     }
 }
