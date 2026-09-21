@@ -10,9 +10,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::ipc::{IpcName, LocalSocket};
+use crate::watcher::NotifyWatcher;
 use crate::{
-    Capabilities, Capability, Error, FileIdentity, FileKey, OriginMetadata, OsOrigin,
-    OsOriginSource, Platform, PlatformPaths, Result, StableFileId, VolumeId,
+    Capabilities, Capability, Error, FileIdentity, FileKey, FsWatcher, IpcTransport,
+    OriginMetadata, OsOrigin, OsOriginSource, Platform, PlatformPaths, Result, StableFileId,
+    VolumeId,
 };
 
 /// モックの振る舞いを決める設定。
@@ -46,6 +49,7 @@ pub struct MockPlatform {
     config: MockConfig,
     inner: Mutex<Inner>,
     paths: MockPaths,
+    ipc: LocalSocket,
 }
 
 impl MockPlatform {
@@ -58,6 +62,8 @@ impl MockPlatform {
             config,
             inner: Mutex::new(Inner::default()),
             paths: MockPaths(std::env::temp_dir().join("file-origin-test")),
+            // テストが実際に IPC を張ることは無いが、trait を満たすために要る。
+            ipc: LocalSocket::new(IpcName::Namespaced("file-origin-mock".to_string())),
         }
     }
 
@@ -187,6 +193,14 @@ impl Platform for MockPlatform {
 
     fn paths(&self) -> &dyn PlatformPaths {
         &self.paths
+    }
+
+    fn ipc(&self) -> &dyn IpcTransport {
+        &self.ipc
+    }
+
+    fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
+        Ok(Box::new(NotifyWatcher::new()?))
     }
 
     fn capabilities(&self) -> Capabilities {
