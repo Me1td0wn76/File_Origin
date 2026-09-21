@@ -30,25 +30,25 @@ pub fn run(store: &Store, args: Args) -> Result<()> {
         limit: args.limit,
     };
     let hits = fo_app::search(store, q)?;
-    print_hits(&hits, args.limit);
+    print_hits(&hits, args.limit)?;
     Ok(())
 }
 
 pub fn locate(store: &Store, query: &str) -> Result<()> {
     let hits = fo_app::locate(store, query)?;
     if hits.is_empty() {
-        println!("見つかりません: {query}");
-        println!("ファイル名の一部か、SHA-256（64 桁）で指定してください。");
+        outln!("見つかりません: {query}");
+        outln!("ファイル名の一部か、SHA-256（64 桁）で指定してください。");
         return Ok(());
     }
-    print_hits(&hits, 0);
+    print_hits(&hits, 0)?;
     Ok(())
 }
 
-fn print_hits(hits: &[SearchHit], limit: usize) {
+fn print_hits(hits: &[SearchHit], limit: usize) -> Result<()> {
     if hits.is_empty() {
-        println!("該当なし");
-        return;
+        outln!("該当なし");
+        return Ok(());
     }
     for h in hits {
         let status = match h.record.status {
@@ -56,11 +56,11 @@ fn print_hits(hits: &[SearchHit], limit: usize) {
             FileStatus::Missing => "  [見失い中]",
             FileStatus::Deleted => "  [削除済み]",
         };
-        println!("{}{}", h.record.current_path.display(), status);
+        outln!("{}{}", h.record.current_path.display(), status);
         match &h.best_origin {
             Some(o) => {
                 let when = o.acquired_at.map(fmt_day).unwrap_or_default();
-                println!(
+                outln!(
                     "    [{}] {}{}",
                     o.confidence.as_str(),
                     o.url.as_deref().unwrap_or("(URL なし)"),
@@ -71,15 +71,16 @@ fn print_hits(hits: &[SearchHit], limit: usize) {
                     }
                 );
             }
-            None => println!("    入手元: 記録なし"),
+            None => outln!("    入手元: 記録なし"),
         }
     }
-    println!();
+    outln!();
     if limit > 0 && hits.len() >= limit {
-        println!("{} 件（上限）。--limit で増やせます。", hits.len());
+        outln!("{} 件（上限）。--limit で増やせます。", hits.len());
     } else {
-        println!("{} 件", hits.len());
+        outln!("{} 件", hits.len());
     }
+    Ok(())
 }
 
 /// `YYYY-MM-DD` をローカル時刻のその日 0 時として Unix 秒に。
