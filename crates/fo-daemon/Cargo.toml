@@ -19,3 +19,4 @@ fo-platform = { workspace = true }
 fo-store = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+chrono = { workspace = true }
