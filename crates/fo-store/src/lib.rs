@@ -20,7 +20,10 @@ pub enum Error {
     Sqlite(#[from] rusqlite::Error),
 
     #[error("データディレクトリを作成できない {path}: {source}")]
-    DataDir { path: PathBuf, source: std::io::Error },
+    DataDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 
     #[error("DB に想定外の値が入っている: {0}")]
     Corrupt(String),
@@ -122,7 +125,9 @@ impl Store {
              WHERE f.sha256 = ?1",
         )?;
         let rows = stmt.query_map(params![digest.as_str()], row_to_file)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()?.into_iter().collect()
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .collect()
     }
 
     /// 新しいファイルを記録し、現在のパスを 1 件登録する。
@@ -383,7 +388,14 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let id = sid("vol1", "key1");
         let file_id = store
-            .insert_file(&id, Path::new("/dl/setup.zip"), 1234, Some(&Digest("aa".into())), 99, None)
+            .insert_file(
+                &id,
+                Path::new("/dl/setup.zip"),
+                1234,
+                Some(&Digest("aa".into())),
+                99,
+                None,
+            )
             .unwrap();
 
         let found = store.find_by_stable_id(&id).unwrap().expect("見つかるはず");
@@ -400,7 +412,9 @@ mod tests {
             .insert_file(&id, Path::new("/dl/setup.zip"), 10, None, 0, None)
             .unwrap();
 
-        store.record_path(file_id, Path::new("/apps/setup.zip")).unwrap();
+        store
+            .record_path(file_id, Path::new("/apps/setup.zip"))
+            .unwrap();
 
         // 現在のパスは更新される
         let found = store.find_by_stable_id(&id).unwrap().unwrap();
@@ -409,7 +423,11 @@ mod tests {
         // 旧パスは履歴として残る（消さない）
         let history: i64 = store
             .conn
-            .query_row("SELECT COUNT(*) FROM file_paths WHERE file_id = ?1", params![file_id], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM file_paths WHERE file_id = ?1",
+                params![file_id],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(history, 2);
     }
