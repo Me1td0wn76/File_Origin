@@ -10,6 +10,7 @@ mod out;
 
 mod daemon;
 mod doctor;
+mod host;
 mod scan;
 mod search;
 mod show;
@@ -114,6 +115,37 @@ enum Command {
         #[command(subcommand)]
         action: DaemonAction,
     },
+
+    /// ブラウザ拡張の接続先（Native Messaging ホスト）を登録する
+    Host {
+        #[command(subcommand)]
+        action: HostAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum HostAction {
+    /// マニフェストを設置する
+    Install {
+        /// 対象ブラウザ。省略すると全部（chrome / edge / chromium / firefox）
+        #[arg(long = "browser")]
+        browsers: Vec<String>,
+
+        /// 接続を許可する拡張 ID。chrome://extensions で確認できる
+        #[arg(long = "extension-id", required = true)]
+        extension_ids: Vec<String>,
+
+        /// 中継プロセスの場所。省略すると fo と同じディレクトリ
+        #[arg(long)]
+        exe: Option<PathBuf>,
+    },
+    /// 設置を取り消す
+    Uninstall {
+        #[arg(long = "browser")]
+        browsers: Vec<String>,
+    },
+    /// 登録状況を表示する
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -235,6 +267,16 @@ fn run() -> Result<()> {
             DaemonAction::Ping => daemon::ping(platform.as_ref())?,
             DaemonAction::Stop => daemon::stop(platform.as_ref())?,
             DaemonAction::Send { json } => daemon::send_raw(platform.as_ref(), &json)?,
+        },
+
+        Command::Host { action } => match action {
+            HostAction::Install {
+                browsers,
+                extension_ids,
+                exe,
+            } => host::install(platform.as_ref(), &browsers, &extension_ids, exe)?,
+            HostAction::Uninstall { browsers } => host::uninstall(platform.as_ref(), &browsers)?,
+            HostAction::Status => host::status(platform.as_ref())?,
         },
 
         Command::Stats => {
