@@ -8,6 +8,8 @@ members = [
     "crates/fo-app",
     "crates/fo-cli",
     "crates/fo-daemon",
+    "crates/fo-nativehost",
+    "gui/src-tauri",
 ]
 
 [workspace.package]
@@ -15,7 +17,7 @@ version = "0.0.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Me1td0wn76/File_Origin"
-rust-version = "1.75"
+rust-version = "1.82"
 
 # 依存はここに集約する。各クレートは workspace = true で引く。
 # バージョンが散らばると更新が破綻するため。
@@ -39,6 +41,9 @@ chrono     = "0.4"
 notify     = "7"
 # ローカル IPC。Windows は名前付きパイプ、Unix はドメインソケットに写る。
 interprocess = "2"
+# GUI。OS 標準の WebView を使う（Windows: WebView2 / Linux: WebKitGTK）。
+tauri = "2"
+tauri-build = "2"
 
 # --- OS 固有クレート ---------------------------------------------------
 # これらを依存に書いてよいのは fo-platform だけ。
@@ -49,6 +54,9 @@ windows-sys = { version = "0.59", features = [
     # CreateFileW は引数に SECURITY_ATTRIBUTES を取るため、この feature が無いと
     # 関数定義そのものが cfg で消える（null を渡すだけでも必要）。
     "Win32_Security",
+    # Zone.Identifier はシステム ANSI コードページで書かれることがある。
+    # MultiByteToWideChar で復号するのに要る。
+    "Win32_Globalization",
 ] }
 xattr = "1"
 
