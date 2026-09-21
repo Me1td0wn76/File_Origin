@@ -231,8 +231,8 @@ fo show ./setup.zip  または  GUI でファイルを選択
 └───────────────────────────┬─────────────────────────────────┘
                             │ 同一のユースケース API を呼ぶ
 ┌───────────────────────────▼─────────────────────────────────┐
-│  アプリケーション層   fo-core::usecase                        │
-│  record_origin / track_move / search / verify / rescan      │
+│  アプリケーション層   fo-app                                  │
+│  ingest / scan / describe / add_manual_origin / …           │
 └──────────┬────────────────────────────────┬─────────────────┘
            │                                │
 ┌──────────▼──────────────┐  ┌──────────────▼─────────────────┐
@@ -266,6 +266,7 @@ fo show ./setup.zip  または  GUI でファイルを選択
 | `fo-core` | lib | ドメインモデル・ユースケース | × なし |
 | `fo-platform` | lib | **OS 抽象化 trait とその実装** | ○ **ここだけ** |
 | `fo-store` | lib | SQLite 永続化・マイグレーション | × なし |
+| `fo-app` | lib | **ユースケース。CLI と GUI が共有する** | × なし |
 | `fo-watcher` | lib | 監視・スキャン・同一性解決のエンジン | ×（`fo-platform` 経由） |
 | `fo-ipc` | lib | IPC のメッセージ定義とクライアント / サーバ | ×（`fo-platform` 経由） |
 | `fo-daemon` | bin | 常駐サービス本体 | × |
@@ -716,6 +717,8 @@ File_Origin/
 │  │     └─ mock/             ○ テスト用のインメモリ実装
 │  ├─ fo-store/               ○ SQLite + マイグレーション
 │  │  └─ migrations/0001_init.sql
+│  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）
+│  │  └─ src/{ingest,scan,describe,manual}.rs
 │  ├─ fo-cli/                 ○ CLI (bin `fo`)
 │  ├─ fo-watcher/                監視・スキャン・同一性解決エンジン (M3)
 │  ├─ fo-ipc/                    JSON-RPC のメッセージ定義 (M3)
@@ -770,6 +773,7 @@ Claude Code を使わない場合は、これらを **コントリビューシ�
 | ハッシュ | `sha2` |
 | 非同期 | `tokio` |
 | CLI | `clap` |
+| 日時表示 | `chrono`（`fo-cli` のみ。表示用） |
 | シリアライズ | `serde` / `serde_json` |
 | GUI | `tauri` v2 |
 
@@ -803,19 +807,29 @@ Rust は scoop の **`rust-gnu`** を使う（`rust` は MSVC 版で Visual Stud
 scoop install rust-gnu
 ```
 
-scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回したければ `rustup` に切り替える。CI では回るので、無くても開発は進められる。
+scoop 版は `clippy` / `rustfmt` の**実体は同梱している**が、シムが `cargo` / `rustc` / `rustdoc` にしか作られない。bin を PATH に足せば `cargo fmt` / `cargo clippy` が動く:
+
+```bash
+export PATH="$HOME/scoop/apps/rust-gnu/current/bin:$PATH"   # Git Bash
+```
+
+```powershell
+$env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
+```
 
 なお `windows-sys` は **引数の型が属する feature も必要**になる。`CreateFileW` は `SECURITY_ATTRIBUTES` を引数に取るため、null を渡すだけでも `Win32_Security` が要る（無いと関数定義そのものが cfg で消え「no `CreateFileW`」になる）。
 
 ### 現在の実装状況
 
-**`fo doctor` / `fo scan` / `fo show` / `fo stats` が動く。** Windows で以下を確認済み:
+**`fo doctor` / `fo scan` / `fo show` / `fo add` / `fo stats` が動く。** Windows で以下を確認済み:
 
 - `fo scan --hash` で Zone.Identifier から入手元を取得
 - ファイルを **移動＋リネーム** → 再 scan で同一ファイルと認識し、入手元が追従（はしご 1 段目）
 - ファイルを **コピー** → 再 scan でコピーと判定し `derived_from` が付く（はしご 3 段目）
 - 何も変えずに再 scan → 変更なし
 - パス履歴が `file_paths` に残る（旧パスは `is_current = 0`）
+- `fo show` がパス履歴・コピー元・コピー元から継承した入手元を表示する
+- `fo add --url` で手動登録。未記録のファイルは同時に取り込む。Zone.Identifier の記録とは別行で積まれる
 
 **Linux では未検証。** CI の `ubuntu-latest` ジョブが最初の検証になる。
 
@@ -891,6 +905,7 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | D8 | 想定ユーザーの再定義 | **§2 を書き換えた。** ドメイン特化ツールの外側にあるファイルが居場所であることを明示 | ○ 完了 |
 | D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ○ 決定 |
 | D10 | WhereFrom との関係 | **差分の明示に留める。** 相手は Windows 専用・CLI のみ・ごく初期段階でスコープが異なり、現時点で協調する対象が無い。Zone.Identifier のパース実装は参考にし、その際はクレジットする | ○ 決定 |
+| D11 | ユースケース層の置き場所 | **`fo-app` クレートを新設。** 当初案の `fo-core::usecase` は、`fo-store → fo-core` の依存があるため `fo-core` からストアを呼べず成立しない。両方の上に載る別クレートで依存方向を守る | ○ 決定 |
 
 ---
 
@@ -899,7 +914,7 @@ scoop 版には `clippy` / `rustfmt` が同梱されていない。手元で回�
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
-| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `stats`<br/>**残: ビルド検証・手動登録・検索** | `fo` コマンドが動く |
+| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `stats`<br/>**残: 検索・Linux 実機検証** | `fo` コマンドが動く |
 | **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
 | **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |
