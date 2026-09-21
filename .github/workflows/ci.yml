@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 env:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: arch-guard
-        run: ./scripts/arch-guard.sh
+        run: bash scripts/arch-guard.sh
 
   lint:
     name: lint
