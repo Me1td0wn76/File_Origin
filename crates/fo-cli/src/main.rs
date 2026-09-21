@@ -110,8 +110,12 @@ enum Command {
 
         /// 昇順にする。既定は項目ごとの自然な向き
         /// （日時・サイズ・確度は降順、名前は昇順）
-        #[arg(long)]
+        #[arg(long, conflicts_with = "desc")]
         asc: bool,
+
+        /// 降順にする
+        #[arg(long)]
+        desc: bool,
     },
 
     /// ファイルの現在地を引く（ファイル名の一部、または SHA-256）
@@ -260,6 +264,7 @@ fn run() -> Result<()> {
             limit,
             sort,
             asc,
+            desc,
         } => search::run(
             &store,
             search::Args {
@@ -270,7 +275,11 @@ fn run() -> Result<()> {
                 until,
                 limit,
                 sort,
-                asc,
+                direction: match (asc, desc) {
+                    (true, _) => Some(false),
+                    (_, true) => Some(true),
+                    _ => None,
+                },
             },
         )?,
 
