@@ -126,6 +126,9 @@ impl Store {
     }
 
     /// 新しいファイルを記録し、現在のパスを 1 件登録する。
+    ///
+    /// `derived_from` はコピー元。コピーを別ファイルとして扱いつつ、
+    /// 入手元の系譜を辿れるようにする（README §8.1 の 3 段目）。
     pub fn insert_file(
         &self,
         id: &StableFileId,
@@ -133,18 +136,72 @@ impl Store {
         size: u64,
         sha256: Option<&Digest>,
         mtime: i64,
+        derived_from: Option<i64>,
     ) -> Result<i64> {
         let ts = now();
         self.conn.execute(
             "INSERT INTO files
-                 (volume_id, file_key, size, sha256, mtime, status,
+                 (volume_id, file_key, size, sha256, mtime, status, derived_from,
                   first_seen_at, last_verified_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'present', ?6, ?6)",
-            params![id.volume.0, id.file.0, size as i64, sha256.map(|d| d.as_str()), mtime, ts],
+             VALUES (?1, ?2, ?3, ?4, ?5, 'present', ?6, ?7, ?7)",
+            params![
+                id.volume.0,
+                id.file.0,
+                size as i64,
+                sha256.map(|d| d.as_str()),
+                mtime,
+                derived_from,
+                ts
+            ],
         )?;
         let file_id = self.conn.last_insert_rowid();
         self.record_path(file_id, path)?;
         Ok(file_id)
+    }
+
+    /// 安定識別子を差し替える。別ボリュームへの移動で識別子が変わったときに使う。
+    /// ハッシュ一致で同一と判定した結果を反映する（README §8.1 の 2 段目）。
+    pub fn update_stable_id(&self, file_id: i64, id: &StableFileId) -> Result<()> {
+        self.conn.execute(
+            "UPDATE files SET volume_id = ?1, file_key = ?2, last_verified_at = ?3
+             WHERE id = ?4",
+            params![id.volume.0, id.file.0, now(), file_id],
+        )?;
+        Ok(())
+    }
+
+    /// 内容が更新されたことを記録する。
+    /// 古いダイジェストは `file_versions` に版として残し、`files` を新しい値にする。
+    pub fn update_content(
+        &self,
+        file_id: i64,
+        sha256: &Digest,
+        size: u64,
+        mtime: i64,
+    ) -> Result<()> {
+        let ts = now();
+        // 旧版を履歴へ。sha256 が NULL（未計算）だった場合は版として残すものが無い。
+        self.conn.execute(
+            "INSERT INTO file_versions (file_id, sha256, size, observed_at)
+             SELECT id, sha256, size, ?2 FROM files
+             WHERE id = ?1 AND sha256 IS NOT NULL",
+            params![file_id, ts],
+        )?;
+        self.conn.execute(
+            "UPDATE files SET sha256 = ?1, size = ?2, mtime = ?3, last_verified_at = ?4
+             WHERE id = ?5",
+            params![sha256.as_str(), size as i64, mtime, ts, file_id],
+        )?;
+        Ok(())
+    }
+
+    /// ハッシュを後から埋める（遅延計算・ADR-0007）。
+    pub fn set_sha256(&self, file_id: i64, sha256: &Digest) -> Result<()> {
+        self.conn.execute(
+            "UPDATE files SET sha256 = ?1, last_verified_at = ?2 WHERE id = ?3",
+            params![sha256.as_str(), now(), file_id],
+        )?;
+        Ok(())
     }
 
     /// 現在のパスを記録する。以前のパスは履歴として残す（消さない）。
@@ -326,7 +383,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let id = sid("vol1", "key1");
         let file_id = store
-            .insert_file(&id, Path::new("/dl/setup.zip"), 1234, Some(&Digest("aa".into())), 99)
+            .insert_file(&id, Path::new("/dl/setup.zip"), 1234, Some(&Digest("aa".into())), 99, None)
             .unwrap();
 
         let found = store.find_by_stable_id(&id).unwrap().expect("見つかるはず");
@@ -340,7 +397,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let id = sid("vol1", "key1");
         let file_id = store
-            .insert_file(&id, Path::new("/dl/setup.zip"), 10, None, 0)
+            .insert_file(&id, Path::new("/dl/setup.zip"), 10, None, 0, None)
             .unwrap();
 
         store.record_path(file_id, Path::new("/apps/setup.zip")).unwrap();
@@ -361,7 +418,7 @@ mod tests {
     fn origins_stack_and_sort_by_confidence() {
         let store = Store::open_in_memory().unwrap();
         let file_id = store
-            .insert_file(&sid("v", "k"), Path::new("/dl/a.zip"), 1, None, 0)
+            .insert_file(&sid("v", "k"), Path::new("/dl/a.zip"), 1, None, 0, None)
             .unwrap();
 
         let weak = Origin {
@@ -398,7 +455,7 @@ mod tests {
         // 読み戻しで Corrupt になる行を作ってしまう。
         let store = Store::open_in_memory().unwrap();
         let file_id = store
-            .insert_file(&sid("v", "k"), Path::new("/dl/a.zip"), 1, None, 0)
+            .insert_file(&sid("v", "k"), Path::new("/dl/a.zip"), 1, None, 0, None)
             .unwrap();
         let res = store.conn.execute(
             "INSERT INTO origins (file_id, source, confidence, recorded_at)
