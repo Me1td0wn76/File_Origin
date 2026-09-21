@@ -8,6 +8,7 @@
 #[macro_use]
 mod out;
 
+mod daemon;
 mod doctor;
 mod scan;
 mod search;
@@ -107,6 +108,22 @@ enum Command {
 
     /// 記録の統計を表示する
     Stats,
+
+    /// 常駐サービスの状態を見る・止める
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DaemonAction {
+    /// 稼働状況を表示する
+    Status,
+    /// 生存確認
+    Ping,
+    /// 停止を要求する
+    Stop,
 }
 
 fn main() -> ExitCode {
@@ -207,6 +224,12 @@ fn run() -> Result<()> {
         )?,
 
         Command::Where { query } => search::locate(&store, &query)?,
+
+        Command::Daemon { action } => match action {
+            DaemonAction::Status => daemon::status(platform.as_ref())?,
+            DaemonAction::Ping => daemon::ping(platform.as_ref())?,
+            DaemonAction::Stop => daemon::stop(platform.as_ref())?,
+        },
 
         Command::Stats => {
             outln!("記録済みファイル : {}", store.count_files()?);
