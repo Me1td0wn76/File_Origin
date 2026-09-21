@@ -4,10 +4,12 @@
 
 mod identity;
 mod ipc;
+mod nativehost;
 mod origin;
-mod paths;
+pub(crate) mod paths;
 
 use crate::ipc::LocalSocket;
+use crate::nativehost::NativeHostInstaller;
 use crate::watcher::NotifyWatcher;
 use crate::{
     Capabilities, Capability, FileIdentity, FsWatcher, IpcTransport, OriginMetadata, Platform,
@@ -19,6 +21,7 @@ pub struct LinuxPlatform {
     origin: origin::LinuxOriginMetadata,
     paths: paths::LinuxPaths,
     ipc: LocalSocket,
+    host_installer: nativehost::LinuxHostInstaller<paths::LinuxPaths>,
 }
 
 impl LinuxPlatform {
@@ -27,6 +30,7 @@ impl LinuxPlatform {
             identity: identity::LinuxIdentity,
             origin: origin::LinuxOriginMetadata::new(),
             paths: paths::LinuxPaths,
+            host_installer: nativehost::LinuxHostInstaller::new(paths::LinuxPaths),
             ipc: ipc::transport(&paths::LinuxPaths),
         }
     }
@@ -53,6 +57,10 @@ impl Platform for LinuxPlatform {
 
     fn ipc(&self) -> &dyn IpcTransport {
         &self.ipc
+    }
+
+    fn host_installer(&self) -> &dyn NativeHostInstaller {
+        &self.host_installer
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
