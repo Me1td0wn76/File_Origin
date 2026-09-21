@@ -14,7 +14,9 @@ pub fn run(platform: &dyn Platform, store: &Store, path: &Path) -> Result<()> {
         Ok(d) => d,
         Err(fo_app::Error::NotRecorded(p)) => {
             println!("記録がありません: {}", p.display());
-            println!("`fo scan <dir>` で取り込むか、`fo add <path> --url <url>` で登録してください。");
+            println!(
+                "`fo scan <dir>` で取り込むか、`fo add <path> --url <url>` で登録してください。"
+            );
             return Ok(());
         }
         Err(e) => return Err(e.into()),
@@ -48,7 +50,12 @@ fn print(d: &Description) {
         println!("パス履歴 ({} 件、新しい順):", d.paths.len());
         for p in &d.paths {
             let mark = if p.is_current { "現在" } else { "    " };
-            println!("  {} {}  {}", fmt_time(p.observed_at), mark, p.path.display());
+            println!(
+                "  {} {}  {}",
+                fmt_time(p.observed_at),
+                mark,
+                p.path.display()
+            );
         }
     }
 
