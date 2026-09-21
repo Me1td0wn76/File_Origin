@@ -60,7 +60,9 @@ pub enum WatchEvent<'a> {
         os_origins_recorded: usize,
     },
     /// 消えたので `missing` にした。
-    MarkedMissing { path: &'a Path },
+    MarkedMissing {
+        path: &'a Path,
+    },
     /// 取りこぼしたので再スキャンが要る。
     NeedsRescan,
     Failed {
