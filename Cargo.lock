@@ -990,6 +990,7 @@ name = "fo-daemon"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "fo-app",
  "fo-core",
