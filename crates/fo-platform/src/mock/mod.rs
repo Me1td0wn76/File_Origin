@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::ipc::{IpcName, LocalSocket};
+use crate::nativehost::{Browser, HostManifest, Installed, NativeHostInstaller};
 use crate::watcher::NotifyWatcher;
 use crate::{
     Capabilities, Capability, Error, FileIdentity, FileKey, FsWatcher, IpcTransport,
@@ -50,6 +51,7 @@ pub struct MockPlatform {
     inner: Mutex<Inner>,
     paths: MockPaths,
     ipc: LocalSocket,
+    host_installer: NoopHostInstaller,
 }
 
 impl MockPlatform {
@@ -63,6 +65,7 @@ impl MockPlatform {
             inner: Mutex::new(Inner::default()),
             paths: MockPaths(std::env::temp_dir().join("file-origin-test")),
             // テストが実際に IPC を張ることは無いが、trait を満たすために要る。
+            host_installer: NoopHostInstaller,
             ipc: LocalSocket::new(IpcName::Namespaced("file-origin-mock".to_string())),
         }
     }
@@ -159,6 +162,29 @@ impl OriginMetadata for MockPlatform {
     }
 }
 
+/// テストでブラウザに登録することは無いので、何もしない実装。
+/// 「登録済みか」は常に false を返す — 嘘をつくより未対応と答える方がよい。
+pub struct NoopHostInstaller;
+
+impl NativeHostInstaller for NoopHostInstaller {
+    fn manifest_path(&self, browser: Browser) -> PathBuf {
+        PathBuf::from(format!("/mock/{}.json", browser.as_str()))
+    }
+    fn install(&self, browser: Browser, _m: &HostManifest) -> Result<Installed> {
+        Ok(Installed {
+            browser,
+            manifest_path: self.manifest_path(browser),
+            registry_key: None,
+        })
+    }
+    fn uninstall(&self, _browser: Browser) -> Result<()> {
+        Ok(())
+    }
+    fn is_installed(&self, _browser: Browser) -> bool {
+        false
+    }
+}
+
 pub struct MockPaths(PathBuf);
 
 impl PlatformPaths for MockPaths {
@@ -197,6 +223,10 @@ impl Platform for MockPlatform {
 
     fn ipc(&self) -> &dyn IpcTransport {
         &self.ipc
+    }
+
+    fn host_installer(&self) -> &dyn NativeHostInstaller {
+        &self.host_installer
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
