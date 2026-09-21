@@ -20,3 +20,4 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 fo-ipc = { workspace = true }
+serde_json = { workspace = true }
