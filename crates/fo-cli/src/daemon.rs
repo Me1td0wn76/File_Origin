@@ -35,6 +35,9 @@ pub fn status(platform: &dyn Platform) -> Result<()> {
             outln!("稼働時間 : {}", human_duration(s.uptime_secs));
             outln!("記録数   : {} ファイル", s.files);
             outln!("監視     : {}", if s.watching { "有効" } else { "無効" });
+            if let Some(p) = &s.log_path {
+                outln!("ログ     : {p}");
+            }
             for (i, r) in s.roots.iter().enumerate() {
                 outln!(
                     "{} {}",
