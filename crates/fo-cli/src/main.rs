@@ -92,7 +92,7 @@ fn main() -> Result<()> {
             }
         }
 
-        Command::Show { path } => show(&store, &path)?,
+        Command::Show { path } => show(platform.as_ref(), &store, &path)?,
 
         Command::Stats => {
             println!("記録済みファイル : {}", store.count_files()?);
@@ -103,10 +103,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn show(store: &Store, path: &std::path::Path) -> Result<()> {
-    // 絶対パスに正規化してから引く。相対パスのまま記録すると、
-    // 実行した場所によって同じファイルが別物に見える。
-    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+fn show(platform: &dyn fo_platform::Platform, store: &Store, path: &std::path::Path) -> Result<()> {
+    // scan と同じ正規化を通してから引く。ここがずれると同じファイルが見つからない。
+    let abs = platform
+        .paths()
+        .canonical(path)
+        .unwrap_or_else(|_| path.to_path_buf());
 
     let Some(record) = store.find_by_path(&abs)? else {
         println!("記録がありません: {}", abs.display());
