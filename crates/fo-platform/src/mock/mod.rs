@@ -196,7 +196,9 @@ impl Platform for MockPlatform {
             reverse_lookup: if self.config.reverse_lookup {
                 Capability::Available
             } else {
-                Capability::Unavailable { why: "mock: 無効" }
+                Capability::Unavailable {
+                    why: "mock: 無効"
+                }
             },
             origin_sources: self.available_sources(),
             change_journal: self.config.journal.clone(),
