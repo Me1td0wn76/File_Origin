@@ -4,6 +4,7 @@ members = [
     "crates/fo-core",
     "crates/fo-platform",
     "crates/fo-store",
+    "crates/fo-app",
     "crates/fo-cli",
 ]
 
@@ -11,7 +12,7 @@ members = [
 version = "0.0.1"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/<handle>/File_Origin"
+repository = "https://github.com/Me1td0wn76/File_Origin"
 rust-version = "1.75"
 
 # 依存はここに集約する。各クレートは workspace = true で引く。
@@ -20,6 +21,7 @@ rust-version = "1.75"
 fo-core     = { path = "crates/fo-core" }
 fo-platform = { path = "crates/fo-platform" }
 fo-store    = { path = "crates/fo-store" }
+fo-app      = { path = "crates/fo-app" }
 
 anyhow     = "1"
 thiserror  = "1"
@@ -28,6 +30,7 @@ serde_json = "1"
 clap       = { version = "4", features = ["derive"] }
 sha2       = "0.10"
 rusqlite   = { version = "0.32", features = ["bundled"] }
+chrono     = "0.4"
 
 # --- OS 固有クレート ---------------------------------------------------
 # これらを依存に書いてよいのは fo-platform だけ。
