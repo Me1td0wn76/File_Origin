@@ -62,6 +62,30 @@ pub fn stop(platform: &dyn Platform) -> Result<()> {
     Ok(())
 }
 
+/// 生の JSON を 1 件送って応答を出す。
+///
+/// 拡張やホストを実装するときの動作確認用。デーモンのプロトコルを
+/// ブラウザ抜きで叩けないと、M4 の切り分けができない。
+pub fn send_raw(platform: &dyn Platform, line: &str) -> Result<()> {
+    use std::io::{BufReader, Write};
+
+    let mut stream = platform
+        .ipc()
+        .connect()
+        .context("デーモンに接続できません")?;
+    stream.write_all(line.trim_end().as_bytes())?;
+    stream.write_all(
+        b"
+",
+    )?;
+    stream.flush()?;
+
+    let mut reader = BufReader::new(&mut stream);
+    let res: serde_json::Value = fo_ipc::read_message(&mut reader)?;
+    outln!("{}", serde_json::to_string_pretty(&res)?);
+    Ok(())
+}
+
 pub fn ping(platform: &dyn Platform) -> Result<()> {
     let mut stream = platform
         .ipc()
