@@ -147,7 +147,9 @@ impl Origin {
 /// スキーム区切りと最初の `/` の間を取れば足りる。
 /// パースに失敗したら `None` を返し、URL 自体は元のまま保持する。
 pub fn host_of(url: &str) -> Option<String> {
-    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    // `://` が無いものは階層型 URL ではない（`about:internet`、`mailto:`、素のパス）。
+    // 実データでは `about:internet` の "about" がホストとして集計に混ざった。
+    let (_, rest) = url.split_once("://")?;
     let authority = rest.split(['/', '?', '#']).next()?;
     // 認証情報とポートを落とす
     let host = authority.rsplit('@').next()?;
@@ -248,6 +250,12 @@ mod tests {
     fn handles_unparseable_urls() {
         assert_eq!(host_of(""), None);
         assert_eq!(host_of("https://"), None);
+        // 階層型でない URL やパスにホストは無い
+        assert_eq!(host_of("about:internet"), None);
+        assert_eq!(host_of("mailto:a@b.example"), None);
+        assert_eq!(host_of(r"C:\Users\x\a.zip"), None);
+        // file:/// は authority が空なのでホスト無し
+        assert_eq!(host_of("file:///C:/Users/x/a.zip"), None);
     }
 
     #[test]
