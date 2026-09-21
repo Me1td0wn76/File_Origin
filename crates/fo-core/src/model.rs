@@ -164,6 +164,18 @@ pub fn host_of(url: &str) -> Option<String> {
     }
 }
 
+/// パス履歴の 1 行。ファイルが「いつ・どこにあったか」。
+///
+/// パスは属性ではなく履歴として持つ（README §10）。移動・リネームのたびに
+/// 行が増え、古い行は `is_current = false` で残る。消さない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathEntry {
+    pub path: PathBuf,
+    pub is_current: bool,
+    /// このパスで観測した日時（Unix 秒）。
+    pub observed_at: i64,
+}
+
 /// 追跡対象ファイル 1 件。
 #[derive(Debug, Clone)]
 pub struct FileRecord {
