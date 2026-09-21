@@ -60,10 +60,17 @@ pub enum Response {
     Pong,
     Status(DaemonStatus),
     /// 取り込みが成功した。
-    Recorded { file_id: i64, verdict: String },
-    Roots { paths: Vec<String> },
+    Recorded {
+        file_id: i64,
+        verdict: String,
+    },
+    Roots {
+        paths: Vec<String>,
+    },
     Ok,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 /// ブラウザ拡張が報告するダウンロード 1 件。
