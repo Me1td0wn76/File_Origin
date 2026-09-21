@@ -297,12 +297,17 @@ fn handle(d: &Daemon, mut stream: Box<dyn fo_platform::IpcStream>) {
             }
         };
 
+        let shutting_down = matches!(req, Request::Shutdown);
         let res = dispatch(d, req);
-        let is_shutdown = matches!(res, Response::Ok) && d.stopping();
         if fo_ipc::write_message(reader.get_mut(), &res).is_err() {
             return;
         }
-        if is_shutdown {
+        if shutting_down {
+            // 停止フラグを立てただけでは accept() のブロックが解けない。
+            // 自分自身に 1 本つないで目を覚まさせる。
+            // （accept をノンブロッキングにしてポーリングする手もあるが、
+            //   そのために CPU を回し続けるのは常駐プロセスとして筋が悪い）
+            let _ = d.platform.ipc().connect();
             return;
         }
     }
