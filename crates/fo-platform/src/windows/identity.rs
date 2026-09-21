@@ -89,7 +89,9 @@ fn file_id_info(path: &Path) -> Result<FILE_ID_INFO> {
 
     let mut info = FILE_ID_INFO {
         VolumeSerialNumber: 0,
-        FileId: windows_sys::Win32::Storage::FileSystem::FILE_ID_128 { Identifier: [0; 16] },
+        FileId: windows_sys::Win32::Storage::FileSystem::FILE_ID_128 {
+            Identifier: [0; 16],
+        },
     };
 
     // SAFETY: handle は有効。info は FILE_ID_INFO のサイズちょうどの領域。
