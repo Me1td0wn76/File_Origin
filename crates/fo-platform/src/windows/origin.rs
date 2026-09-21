@@ -130,8 +130,14 @@ mod tests {
                     ReferrerUrl=https://example.com/page\r\n\
                     HostUrl=https://cdn.example.com/setup.zip\r\n";
         let origin = parse_zone_identifier(text).expect("入手元が取れるはず");
-        assert_eq!(origin.url.as_deref(), Some("https://cdn.example.com/setup.zip"));
-        assert_eq!(origin.referrer_url.as_deref(), Some("https://example.com/page"));
+        assert_eq!(
+            origin.url.as_deref(),
+            Some("https://cdn.example.com/setup.zip")
+        );
+        assert_eq!(
+            origin.referrer_url.as_deref(),
+            Some("https://example.com/page")
+        );
         assert_eq!(origin.source, OsOriginSource::ZoneIdentifier);
     }
 
