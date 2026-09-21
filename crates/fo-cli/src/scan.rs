@@ -27,7 +27,6 @@ pub fn run(
     opts: ScanOptions,
 ) -> Result<()> {
     let mut s = Summary::default();
-    let mut printed_root = false;
 
     let root = scan_dir(platform, store, root, opts, &mut |ev| {
         match ev {
@@ -47,9 +46,6 @@ pub fn run(
                 }
             }
             ScanEvent::Error { .. } => s.errors += 1,
-        }
-        if !printed_root {
-            printed_root = true;
         }
     })?;
 
