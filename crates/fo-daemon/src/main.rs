@@ -158,10 +158,16 @@ fn initial_scan(d: &Daemon) -> Result<()> {
             ingest: d.opts,
         };
         let res = fo_app::scan_dir(d.platform.as_ref(), &store, &root, opts, &mut |ev| {
-            if let fo_app::ScanEvent::File { verdict, .. } = ev {
+            if let fo_app::ScanEvent::File {
+                verdict,
+                path_changed,
+                ..
+            } = ev
+            {
                 match verdict {
                     fo_core::Verdict::New => new += 1,
                     fo_core::Verdict::Moved { .. } => moved += 1,
+                    fo_core::Verdict::Same { .. } if path_changed => moved += 1,
                     _ => {}
                 }
             }
@@ -208,10 +214,11 @@ fn watch_loop(d: &Daemon) {
                     path,
                     verdict,
                     os_origins_recorded,
+                    path_changed,
                 } => {
                     eprintln!(
                         "[{}] {}{}",
-                        verdict_label(verdict),
+                        label(verdict, path_changed),
                         path.display(),
                         if os_origins_recorded > 0 {
                             format!("  (入手元 {os_origins_recorded} 件)")
@@ -239,9 +246,14 @@ fn watch_loop(d: &Daemon) {
     }
 }
 
-fn verdict_label(v: &fo_core::Verdict) -> &'static str {
+/// 判定を利用者向けの言葉にする。
+///
+/// 同一ボリューム内の移動は `Verdict::Same`（識別子が変わらない）だが、
+/// 利用者から見れば「移動」。`path_changed` で区別する。
+fn label(v: &fo_core::Verdict, path_changed: bool) -> &'static str {
     match v {
         fo_core::Verdict::New => "新規",
+        fo_core::Verdict::Same { .. } if path_changed => "移動",
         fo_core::Verdict::Same { .. } => "変更なし",
         fo_core::Verdict::Moved { .. } => "移動",
         fo_core::Verdict::Copied { .. } => "コピー",
@@ -363,7 +375,7 @@ fn record(d: &Daemon, report: DownloadReport) -> Response {
     match fo_app::record_download(d.platform.as_ref(), &store, &app_report) {
         Ok((ingested, _)) => Response::Recorded {
             file_id: ingested.file_id,
-            verdict: verdict_label(&ingested.verdict).to_string(),
+            verdict: label(&ingested.verdict, ingested.path_changed).to_string(),
         },
         Err(e) => err(e),
     }
