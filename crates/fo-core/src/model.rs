@@ -178,6 +178,97 @@ pub struct PathEntry {
     pub observed_at: i64,
 }
 
+/// 検索結果の並べ替えに使う項目。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortKey {
+    /// File Origin が最初にそのファイルを見た日時。既定。
+    #[default]
+    FirstSeen,
+    /// 取得日時。**入手元のうち最も新しいもの**を使い、
+    /// 入手元が無ければ `FirstSeen` で代用する。
+    ///
+    /// 一括スキャンすると `FirstSeen` は全件がほぼ同時刻になり順序に意味が無くなる。
+    /// 本来の時系列はこちら。
+    AcquiredAt,
+    /// ファイル名（現在のもの）。大文字小文字を区別しない。
+    Name,
+    Size,
+    /// 入手元の確度。**そのファイルが持つ中で最も高いもの**で比べる。
+    Confidence,
+}
+
+impl SortKey {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstSeen => "first-seen",
+            Self::AcquiredAt => "acquired",
+            Self::Name => "name",
+            Self::Size => "size",
+            Self::Confidence => "confidence",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "first-seen" | "first_seen" | "seen" => Some(Self::FirstSeen),
+            "acquired" | "acquired-at" | "acquired_at" | "date" => Some(Self::AcquiredAt),
+            "name" => Some(Self::Name),
+            "size" => Some(Self::Size),
+            "confidence" | "conf" => Some(Self::Confidence),
+            _ => None,
+        }
+    }
+
+    pub fn all() -> &'static [SortKey] {
+        &[
+            Self::FirstSeen,
+            Self::AcquiredAt,
+            Self::Name,
+            Self::Size,
+            Self::Confidence,
+        ]
+    }
+
+    /// 既定の向き。
+    ///
+    /// 日時・サイズ・確度は「大きい / 新しい / 高い」が先に来るほうが自然だが、
+    /// 名前だけは辞書順（昇順）が期待される。
+    pub fn default_descending(self) -> bool {
+        !matches!(self, Self::Name)
+    }
+}
+
+/// 並び順。
+///
+/// `descending` は **値の大小** に対する向き。確度は
+/// `certain > high > medium > low` を大きいとみなすので、降順なら確度の高い順になる。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortOrder {
+    pub key: SortKey,
+    pub descending: bool,
+}
+
+impl SortOrder {
+    pub fn new(key: SortKey, descending: bool) -> Self {
+        Self { key, descending }
+    }
+
+    /// そのキーの既定の向きで作る。
+    pub fn natural(key: SortKey) -> Self {
+        Self {
+            key,
+            descending: key.default_descending(),
+        }
+    }
+}
+
+impl Default for SortOrder {
+    /// 既定は「最初に見た日時の新しい順」。従来の挙動と同じ。
+    fn default() -> Self {
+        Self::natural(SortKey::FirstSeen)
+    }
+}
+
 /// 検索条件。指定した項目はすべて AND で結ばれる。
 ///
 /// 日時は Unix 秒で受ける。「2026-09-21」をどう解釈するか（ローカル時刻の 0 時か、
@@ -197,6 +288,8 @@ pub struct SearchQuery {
     pub sha256: Option<Digest>,
     /// 0 なら無制限。
     pub limit: usize,
+    /// 並び順。既定は「最初に見た日時の新しい順」。
+    pub sort: SortOrder,
 }
 
 /// 検索結果 1 件。

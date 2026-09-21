@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use fo_core::model::{
     Confidence, Digest, FileRecord, FileStatus, Origin, OriginSource, PathEntry, SearchHit,
-    SearchQuery,
+    SearchQuery, SortKey, SortOrder,
 };
 use fo_platform::{FileKey, StableFileId, VolumeId};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -298,14 +298,23 @@ impl Store {
         Ok(())
     }
 
-    /// 条件に合うファイルを、最初に見た日時の新しい順に返す。
+    /// 条件に合うファイルを返す。並び順は `q.sort` で指定する。
     ///
     /// SQL は固定で、指定の無い条件は `:x IS NULL` で素通しにする。
     /// 動的に組み立てないのは、条件の組み合わせごとにテストしなくて済むようにするため。
+    /// `ORDER BY` だけは列挙型から選んだ**固定文字列**に差し替える
+    /// （利用者入力は一切埋め込まない）。
     ///
     /// ファイル名は **過去の名前も含めて** 当てる。「昔 setup.zip だったあれはどこ？」に
     /// 答えるのがこのツールの約束で、リネーム後の名前しか引けないなら履歴を持つ意味がない。
     /// 表示するパスは現在のもの。
+    ///
+    /// ## 入手元の条件は EXISTS で書く
+    ///
+    /// 以前は `LEFT JOIN origins` ＋ `SELECT DISTINCT` だったが、
+    /// それだと 1 ファイルが入手元の数だけ行に増え、**入手元の列で並べ替えると
+    /// どの行の値で並ぶのかが決まらない**。EXISTS にすれば行は 1 ファイル 1 行になり、
+    /// DISTINCT も要らなくなる。
     pub fn search(&self, q: &SearchQuery) -> Result<Vec<SearchHit>> {
         let name_like = q.name.as_deref().map(glob_to_like);
         let url_like = q.url.as_deref().map(|u| format!("%{}%", escape_like(u)));
@@ -313,26 +322,31 @@ impl Store {
         let host_sub = host.as_deref().map(|h| format!("%.{}", escape_like(h)));
         let limit = if q.limit == 0 { -1 } else { q.limit as i64 };
 
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT
-                    f.id, f.volume_id, f.file_key, f.size, f.sha256, f.mtime,
-                    f.status, f.derived_from, p.path, f.first_seen_at
+        let sql = format!(
+            "SELECT f.id, f.volume_id, f.file_key, f.size, f.sha256, f.mtime,
+                    f.status, f.derived_from, p.path
              FROM files f
              JOIN file_paths p ON p.file_id = f.id AND p.is_current = 1
-             LEFT JOIN origins o ON o.file_id = f.id
              WHERE (:name IS NULL OR EXISTS (
                         SELECT 1 FROM file_paths ph
                         WHERE ph.file_id = f.id AND ph.name LIKE :name ESCAPE '!'))
-               AND (:url  IS NULL OR o.url LIKE :url ESCAPE '!'
-                                  OR o.referrer_url LIKE :url ESCAPE '!')
-               AND (:host IS NULL OR o.host = :host OR o.host LIKE :host_sub ESCAPE '!')
-               AND (:since IS NULL OR COALESCE(o.acquired_at, f.first_seen_at) >= :since)
-               AND (:until IS NULL OR COALESCE(o.acquired_at, f.first_seen_at) <  :until)
-               AND (:sha  IS NULL OR f.sha256 = :sha)
-             ORDER BY f.first_seen_at DESC, f.id DESC
+               AND (:url IS NULL OR EXISTS (
+                        SELECT 1 FROM origins o WHERE o.file_id = f.id
+                          AND (o.url LIKE :url ESCAPE '!'
+                            OR o.referrer_url LIKE :url ESCAPE '!')))
+               AND (:host IS NULL OR EXISTS (
+                        SELECT 1 FROM origins o WHERE o.file_id = f.id
+                          AND (o.host = :host OR o.host LIKE :host_sub ESCAPE '!')))
+               AND (:since IS NULL OR {acquired} >= :since)
+               AND (:until IS NULL OR {acquired} <  :until)
+               AND (:sha IS NULL OR f.sha256 = :sha)
+             ORDER BY {order}
              LIMIT :limit",
-        )?;
+            acquired = ACQUIRED_AT,
+            order = order_by(q.sort),
+        );
 
+        let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(
             rusqlite::named_params! {
                 ":name": name_like,
@@ -529,6 +543,42 @@ fn parse_confidence(s: &str) -> Result<Confidence> {
         "low" => Confidence::Low,
         other => return Err(Error::Corrupt(format!("confidence='{other}'"))),
     })
+}
+
+/// ファイルの「取得日時」を表す式。
+///
+/// 入手元のうち **最も新しい** `acquired_at`。入手元が無い、または
+/// どれも日時を持たない場合は `first_seen_at` で代用する。
+///
+/// 絞り込み（`--since` / `--until`）と並べ替えで **同じ式を使う**。
+/// 別々にすると「範囲に入っているのに並びが合わない」という説明できない挙動になる。
+const ACQUIRED_AT: &str = "COALESCE(    (SELECT MAX(o.acquired_at) FROM origins o WHERE o.file_id = f.id),     f.first_seen_at)";
+
+/// ファイルが持つ入手元のうち、最も高い確度を数値にした式。
+///
+/// `certain` を最大にしてあるので、降順に並べれば確度の高い順になる。
+/// 入手元が無いファイルは NULL となり、降順では最後に回る。
+const BEST_CONFIDENCE: &str = "(SELECT MAX(CASE o.confidence     WHEN 'certain' THEN 3 WHEN 'high' THEN 2 WHEN 'medium' THEN 1 ELSE 0 END)     FROM origins o WHERE o.file_id = f.id)";
+
+/// `ORDER BY` 句を組み立てる。
+///
+/// **利用者の入力は一切入らない。** 列挙型から固定の文字列を選ぶだけなので、
+/// ここから SQL が注入されることはない。
+///
+/// 末尾に `f.id` を足すのは並びを安定させるため。同値の行が実行のたびに
+/// 入れ替わると、ページ送りや再検索で結果がちらつく。
+fn order_by(sort: SortOrder) -> String {
+    let expr = match sort.key {
+        SortKey::FirstSeen => "f.first_seen_at",
+        SortKey::AcquiredAt => ACQUIRED_AT,
+        // NOCASE は ASCII にしか効かない。日本語の並びは符号位置順になるが、
+        // 英数字のファイル名で大文字小文字が混ざる方が実害が大きいので有効にする。
+        SortKey::Name => "p.name COLLATE NOCASE",
+        SortKey::Size => "f.size",
+        SortKey::Confidence => BEST_CONFIDENCE,
+    };
+    let dir = if sort.descending { "DESC" } else { "ASC" };
+    format!("{expr} {dir}, f.id {dir}")
 }
 
 /// パスからベース名を取る。取れなければパス全体（ルートなど）。
@@ -803,6 +853,205 @@ mod tests {
             })
             .unwrap();
         assert_eq!(both.len(), 1);
+    }
+
+    /// 並べ替えのテスト用。名前・サイズ・取得日時・確度がすべて違う 3 件。
+    fn seeded_for_sort() -> Store {
+        let store = Store::open_in_memory().unwrap();
+        let mk =
+            |v: &str, path: &str, size: u64, acquired: Option<i64>, conf: Option<Confidence>| {
+                let id = store
+                    .insert_file(&sid(v, v), Path::new(path), size, None, 0, None)
+                    .unwrap();
+                if let Some(c) = conf {
+                    store
+                        .add_origin(
+                            id,
+                            &Origin {
+                                url: Some(format!("https://e.example/{v}")),
+                                referrer_url: None,
+                                host: Some("e.example".into()),
+                                acquired_at: acquired,
+                                source: OriginSource::ZoneIdentifier,
+                                confidence: c,
+                                browser: None,
+                                profile: None,
+                            },
+                        )
+                        .unwrap();
+                }
+                id
+            };
+        mk(
+            "a",
+            "/dl/banana.bin",
+            300,
+            Some(3_000),
+            Some(Confidence::Medium),
+        );
+        mk(
+            "b",
+            "/dl/Apple.bin",
+            100,
+            Some(1_000),
+            Some(Confidence::Certain),
+        );
+        mk("c", "/dl/cherry.bin", 200, Some(2_000), None); // 入手元なし
+        store
+    }
+
+    fn names(hits: &[SearchHit]) -> Vec<String> {
+        hits.iter()
+            .map(|h| {
+                h.record
+                    .current_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    }
+
+    fn sorted_by(store: &Store, key: SortKey, descending: bool) -> Vec<String> {
+        let q = SearchQuery {
+            sort: SortOrder::new(key, descending),
+            ..Default::default()
+        };
+        names(&store.search(&q).unwrap())
+    }
+
+    #[test]
+    fn default_sort_is_unchanged() {
+        // 既定は「最初に見た日時の新しい順」。従来の呼び出しの挙動が変わらないこと。
+        let store = seeded_for_sort();
+        let by_default = names(&store.search(&SearchQuery::default()).unwrap());
+        let explicit = sorted_by(&store, SortKey::FirstSeen, true);
+        assert_eq!(by_default, explicit);
+    }
+
+    #[test]
+    fn sorts_by_name_case_insensitively() {
+        let store = seeded_for_sort();
+        // NOCASE が効いていないと Apple(A) と banana(b) の間に大文字小文字の壁ができる。
+        assert_eq!(
+            sorted_by(&store, SortKey::Name, false),
+            vec!["Apple.bin", "banana.bin", "cherry.bin"]
+        );
+        assert_eq!(
+            sorted_by(&store, SortKey::Name, true),
+            vec!["cherry.bin", "banana.bin", "Apple.bin"]
+        );
+    }
+
+    #[test]
+    fn sorts_by_size() {
+        let store = seeded_for_sort();
+        assert_eq!(
+            sorted_by(&store, SortKey::Size, true),
+            vec!["banana.bin", "cherry.bin", "Apple.bin"]
+        );
+        assert_eq!(
+            sorted_by(&store, SortKey::Size, false),
+            vec!["Apple.bin", "cherry.bin", "banana.bin"]
+        );
+    }
+
+    #[test]
+    fn sorts_by_acquired_at_falling_back_to_first_seen() {
+        let store = seeded_for_sort();
+        // cherry は入手元が無いので first_seen_at（= 実行時刻）で代用され、
+        // acquired_at を持つ 2 件より新しくなる。
+        let desc = sorted_by(&store, SortKey::AcquiredAt, true);
+        assert_eq!(
+            desc[0], "cherry.bin",
+            "入手元なしは first_seen で代用: {desc:?}"
+        );
+        assert_eq!(&desc[1..], &["banana.bin", "Apple.bin"]);
+    }
+
+    #[test]
+    fn sorts_by_best_confidence_and_puts_unknown_last() {
+        let store = seeded_for_sort();
+        // 降順 = 確度の高い順。入手元が無いものは最後。
+        assert_eq!(
+            sorted_by(&store, SortKey::Confidence, true),
+            vec!["Apple.bin", "banana.bin", "cherry.bin"]
+        );
+    }
+
+    #[test]
+    fn sort_uses_the_highest_confidence_of_the_file() {
+        // 1 ファイルに確度の違う入手元が複数あるとき、最も高いもので比べる。
+        let store = Store::open_in_memory().unwrap();
+        let mk = |v: &str, path: &str, confs: &[Confidence]| {
+            let id = store
+                .insert_file(&sid(v, v), Path::new(path), 1, None, 0, None)
+                .unwrap();
+            for c in confs {
+                store
+                    .add_origin(
+                        id,
+                        &Origin {
+                            url: Some("https://e.example/x".into()),
+                            referrer_url: None,
+                            host: None,
+                            acquired_at: None,
+                            source: OriginSource::ZoneIdentifier,
+                            confidence: *c,
+                            browser: None,
+                            profile: None,
+                        },
+                    )
+                    .unwrap();
+            }
+        };
+        mk("a", "/dl/low-only.bin", &[Confidence::Low]);
+        mk(
+            "b",
+            "/dl/mixed.bin",
+            &[Confidence::Low, Confidence::Certain],
+        );
+
+        // mixed は low も持つが certain があるので先に来る。
+        assert_eq!(
+            sorted_by(&store, SortKey::Confidence, true),
+            vec!["mixed.bin", "low-only.bin"]
+        );
+    }
+
+    #[test]
+    fn one_row_per_file_even_with_many_origins() {
+        // EXISTS に書き換えた本来の狙い。以前は LEFT JOIN + DISTINCT だったため、
+        // 入手元の列で並べ替えるとどの行の値で並ぶか決まらなかった。
+        let store = Store::open_in_memory().unwrap();
+        let id = store
+            .insert_file(&sid("v", "k"), Path::new("/dl/many.bin"), 1, None, 0, None)
+            .unwrap();
+        for i in 0..3 {
+            store
+                .add_origin(
+                    id,
+                    &Origin {
+                        url: Some(format!("https://e.example/{i}")),
+                        referrer_url: None,
+                        host: Some("e.example".into()),
+                        acquired_at: Some(1_000 + i),
+                        source: OriginSource::ZoneIdentifier,
+                        confidence: Confidence::High,
+                        browser: None,
+                        profile: None,
+                    },
+                )
+                .unwrap();
+        }
+        let hits = store
+            .search(&SearchQuery {
+                host: Some("e.example".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hits.len(), 1, "入手元が 3 件でも結果は 1 行");
     }
 
     #[test]
