@@ -33,7 +33,11 @@ pub fn run(platform: &dyn Platform) {
         println!("Download dirs     : (検出できず — fo scan <path> で明示してください)");
     } else {
         for (i, d) in downloads.iter().enumerate() {
-            let label = if i == 0 { "Download dirs     :" } else { "                   " };
+            let label = if i == 0 {
+                "Download dirs     :"
+            } else {
+                "                   "
+            };
             println!("{label} {}", d.display());
         }
     }
@@ -41,7 +45,12 @@ pub fn run(platform: &dyn Platform) {
 
 fn print_origin_sources(caps: &Capabilities) {
     if caps.origin_sources.is_empty() {
-        line("Origin metadata", &Capability::Unavailable { why: "経路なし" });
+        line(
+            "Origin metadata",
+            &Capability::Unavailable {
+                why: "経路なし"
+            },
+        );
         return;
     }
 
