@@ -1,5 +1,6 @@
 [package]
 name = "fo-daemon"
+description = "File Origin の常駐サービス。監視と IPC サーバを担う。"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
