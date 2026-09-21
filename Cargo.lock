@@ -285,6 +285,7 @@ dependencies = [
  "clap",
  "fo-app",
  "fo-core",
+ "fo-ipc",
  "fo-platform",
  "fo-store",
 ]
