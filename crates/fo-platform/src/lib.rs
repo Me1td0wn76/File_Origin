@@ -205,15 +205,21 @@ pub trait PlatformPaths {
 
 /// すべてを束ねるエントリポイント。アプリは常にこれだけを受け取る。
 ///
-/// TODO(M3): `FsWatcher` / `ChangeJournal` / `IpcTransport` を追加する。
+/// TODO(M3): `ChangeJournal`（USN / fanotify）を追加する。既定の差分スキャンで
+/// 代替できるため、監視より後回しにしている（ADR-0005）。
 /// TODO(M4): `NativeHostInstaller` を追加する。
 /// TODO(M6): `Autostart` を追加する。
-/// いずれも README §7.1 に設計済み。実装が付くまで trait を生やさないのは、
-/// 使われない抽象が設計を縛るのを避けるため。
 pub trait Platform: Send + Sync {
     fn identity(&self) -> &dyn FileIdentity;
     fn origin_meta(&self) -> &dyn OriginMetadata;
     fn paths(&self) -> &dyn PlatformPaths;
+    fn ipc(&self) -> &dyn IpcTransport;
+
+    /// 新しい監視器を作る。
+    ///
+    /// `Platform` から借りるのではなく毎回作るのは、監視器が可変状態を持ち、
+    /// デーモンのスレッドが専有するため。
+    fn new_watcher(&self) -> Result<Box<dyn FsWatcher>>;
 
     /// 実行環境の実力を診断する。
     fn capabilities(&self) -> Capabilities;
@@ -222,6 +228,12 @@ pub trait Platform: Send + Sync {
 // ---------------------------------------------------------------------------
 // 実装の切り替え
 // ---------------------------------------------------------------------------
+
+pub mod ipc;
+pub mod watcher;
+
+pub use ipc::{IpcListener, IpcName, IpcStream, IpcTransport};
+pub use watcher::{FsEvent, FsWatcher};
 
 #[cfg(windows)]
 mod windows;
