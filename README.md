@@ -9,13 +9,13 @@
 - **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
 - **移動・リネーム追跡** — ファイルが動いても追い続ける
 
-> **Status: M1 実装中 — Windows でビルド・テスト・動作確認済み**
+> **Status: M1 実装中 — Windows / Linux 両方で CI が通っている**
 > 本 README はアーキテクチャ設計文書を兼ねます。
 > - 設計判断とその理由: [docs/adr/](docs/adr/)・[未決事項](#15-未決事項decision-log)
 > - 既存 OSS・製品の調査: [docs/prior-art.md](docs/prior-art.md)（完了）
 > - 何がどこまで動くか: [現在の実装状況](#現在の実装状況)
 >
-> Windows 11 / Rust 1.98 (GNU) で `cargo test` 28 件パス、`fo scan` → 移動 → 再 scan で入手元の追従を確認済み。**Linux は未検証**（CI で回す）。
+> Windows 11 / Rust 1.98 (GNU) で `cargo test` 28 件パス、`fo scan` → 移動 → 再 scan で入手元の追従を確認済み。CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）で ubuntu-latest / windows-latest の両方がビルド・テスト・clippy・rustfmt・arch-guard を通過。Linux の実機での `fo scan` はまだ。
 
 ---
 
@@ -831,7 +831,7 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 - `fo show` がパス履歴・コピー元・コピー元から継承した入手元を表示する
 - `fo add --url` で手動登録。未記録のファイルは同時に取り込む。Zone.Identifier の記録とは別行で積まれる
 
-**Linux では未検証。** CI の `ubuntu-latest` ジョブが最初の検証になる。
+**Linux は CI（ubuntu-latest）でビルド・テスト・`fo doctor` まで確認済み。** 実ファイルでの `fo scan` はまだ誰も回していない。
 
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
@@ -914,7 +914,7 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
-| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `stats`<br/>**残: 検索・Linux 実機検証** | `fo` コマンドが動く |
+| **M1** コア + CLI | △ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `stats`<br/>両 OS で CI 通過<br/>**残: 検索** | `fo` コマンドが動く |
 | **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
 | **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |
