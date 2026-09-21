@@ -249,6 +249,32 @@ impl Store {
         Ok(())
     }
 
+    /// パスに対応するファイルを `missing` にする。該当が無ければ `false`。
+    ///
+    /// 削除ではなく `missing` に落とすのは、再スキャンや移動先の発見で
+    /// 戻ってくる可能性があるため。**入手元の記録は消さない** —
+    /// ファイルが消えても「どこから来たか」は残す価値がある
+    /// （hydrus が「失われたファイルの known URLs」を書き出せるのと同じ発想）。
+    pub fn mark_missing_by_path(&self, path: &Path) -> Result<bool> {
+        let n = self.conn.execute(
+            "UPDATE files SET status = 'missing', last_verified_at = ?1
+             WHERE id IN (SELECT file_id FROM file_paths
+                          WHERE path = ?2 AND is_current = 1)
+               AND status = 'present'",
+            params![now(), path.to_string_lossy()],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// 実在が確認できたので `present` に戻す。
+    pub fn mark_present(&self, file_id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE files SET status = 'present', last_verified_at = ?1 WHERE id = ?2",
+            params![now(), file_id],
+        )?;
+        Ok(())
+    }
+
     /// ハッシュを後から埋める（遅延計算・ADR-0007）。
     pub fn set_sha256(&self, file_id: i64, sha256: &Digest) -> Result<()> {
         self.conn.execute(
