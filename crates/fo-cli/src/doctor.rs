@@ -29,6 +29,15 @@ pub fn run(platform: &dyn Platform) -> Result<()> {
     outln!("Data dir          : {}", paths.data_dir().display());
     outln!("Config dir        : {}", paths.config_dir().display());
     outln!("Database          : {}", paths.database_path().display());
+    outln!("IPC               : {}", platform.ipc().endpoint_display());
+    outln!(
+        "Daemon            : {}",
+        if crate::daemon::is_running(platform) {
+            "稼働中"
+        } else {
+            "停止中（自動記録と即時追従は無効）"
+        }
+    );
 
     let downloads = paths.default_download_dirs();
     if downloads.is_empty() {
