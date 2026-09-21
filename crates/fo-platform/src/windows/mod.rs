@@ -4,10 +4,12 @@
 
 mod identity;
 mod ipc;
+mod nativehost;
 mod origin;
-mod paths;
+pub(crate) mod paths;
 
 use crate::ipc::LocalSocket;
+use crate::nativehost::NativeHostInstaller;
 use crate::watcher::NotifyWatcher;
 use crate::{
     Capabilities, Capability, FileIdentity, FsWatcher, IpcTransport, OriginMetadata, Platform,
@@ -19,6 +21,7 @@ pub struct WindowsPlatform {
     origin: origin::WindowsOriginMetadata,
     paths: paths::WindowsPaths,
     ipc: LocalSocket,
+    host_installer: nativehost::WindowsHostInstaller<paths::WindowsPaths>,
 }
 
 impl WindowsPlatform {
@@ -27,6 +30,7 @@ impl WindowsPlatform {
             identity: identity::WindowsIdentity,
             origin: origin::WindowsOriginMetadata,
             paths: paths::WindowsPaths,
+            host_installer: nativehost::WindowsHostInstaller::new(paths::WindowsPaths),
             ipc: ipc::transport(),
         }
     }
@@ -53,6 +57,10 @@ impl Platform for WindowsPlatform {
 
     fn ipc(&self) -> &dyn IpcTransport {
         &self.ipc
+    }
+
+    fn host_installer(&self) -> &dyn NativeHostInstaller {
+        &self.host_installer
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
