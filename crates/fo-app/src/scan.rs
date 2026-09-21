@@ -44,6 +44,13 @@ pub enum ScanEvent<'a> {
     Error { path: &'a Path, error: Error },
 }
 
+/// 何ファイルごとにコミットするか。
+///
+/// 1 ファイルずつ autocommit すると fsync の回数分だけ遅い（6,900 ファイルで 31 秒）。
+/// 全部を 1 トランザクションにすると、途中で落ちたとき何も残らない。
+/// その間を取る。この値で途中終了しても、直前のコミットまでは記録が残る。
+const COMMIT_EVERY: usize = 500;
+
 /// ディレクトリを走査する。`root` は未正規化でよい（ここで正規化する）。
 /// 正規化後のルートを返す。
 pub fn scan_dir(
@@ -60,8 +67,46 @@ pub fn scan_dir(
             path: root.to_path_buf(),
             source,
         })?;
-    walk(platform, store, &root, opts, 0, on_event);
+
+    let mut batch = Batcher::begin(store)?;
+    walk(platform, store, &root, opts, 0, on_event, &mut batch);
+    batch.finish()?;
     Ok(root)
+}
+
+/// 走査中の書き込みをまとめる。`COMMIT_EVERY` 件ごとに区切ってコミットする。
+struct Batcher<'a> {
+    store: &'a Store,
+    current: Option<fo_store::Batch<'a>>,
+    pending: usize,
+}
+
+impl<'a> Batcher<'a> {
+    fn begin(store: &'a Store) -> Result<Self> {
+        Ok(Self {
+            store,
+            current: Some(store.batch()?),
+            pending: 0,
+        })
+    }
+
+    /// 1 ファイル処理したことを記録し、必要なら区切る。
+    fn tick(&mut self) -> Result<()> {
+        self.pending += 1;
+        if self.pending >= COMMIT_EVERY {
+            self.finish()?;
+            self.current = Some(self.store.batch()?);
+        }
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        if let Some(b) = self.current.take() {
+            b.commit()?;
+        }
+        self.pending = 0;
+        Ok(())
+    }
 }
 
 fn walk(
@@ -71,6 +116,7 @@ fn walk(
     opts: ScanOptions,
     depth: usize,
     on_event: &mut dyn FnMut(ScanEvent<'_>),
+    batch: &mut Batcher<'_>,
 ) {
     if depth > MAX_DEPTH {
         return;
@@ -110,7 +156,7 @@ fn walk(
 
         if meta.is_dir() {
             if opts.recursive {
-                walk(platform, store, &path, opts, depth + 1, on_event);
+                walk(platform, store, &path, opts, depth + 1, on_event, batch);
             }
             continue;
         }
@@ -125,6 +171,12 @@ fn walk(
                 os_origins_recorded: ingested.os_origins_recorded,
             }),
             Err(error) => on_event(ScanEvent::Error { path: &path, error }),
+        }
+        // コミットに失敗したら DB 側の問題なので、走査を続けても意味がない。
+        // ただし walk は結果を返さない設計なので、イベントで知らせて打ち切る。
+        if let Err(error) = batch.tick() {
+            on_event(ScanEvent::Error { path: &path, error });
+            return;
         }
     }
 }
