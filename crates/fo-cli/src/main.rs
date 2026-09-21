@@ -4,12 +4,17 @@
 //! ロジックはここに置かない（設計方針 P2）。ここにロジックが溜まると
 //! CLI と GUI で挙動が食い違う。
 
+// `#[macro_use]` はテキスト順にしか効かない。outln! を使う各モジュールより先に置く。
+#[macro_use]
+mod out;
+
 mod doctor;
 mod scan;
 mod search;
 mod show;
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -104,14 +109,26 @@ enum Command {
     Stats,
 }
 
-fn main() -> Result<()> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        // `fo search | head` のように読み手が先に終了しただけ。異常ではない。
+        Err(e) if out::is_broken_pipe(&e) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
     let platform = fo_platform::current();
 
     // doctor だけは DB を開かずに動く。
     // 「DB すら開けない」環境の診断に使いたいため。
     if matches!(cli.command, Command::Doctor) {
-        doctor::run(platform.as_ref());
+        doctor::run(platform.as_ref())?;
         return Ok(());
     }
 
@@ -164,7 +181,7 @@ fn main() -> Result<()> {
                 Verdict::Updated { .. } => "内容の更新を記録し、",
                 Verdict::Same { .. } => "",
             };
-            println!("{how}入手元を登録しました: {url}");
+            outln!("{how}入手元を登録しました: {url}");
             show::run(platform.as_ref(), &store, &path)?;
         }
 
@@ -192,8 +209,8 @@ fn main() -> Result<()> {
         Command::Where { query } => search::locate(&store, &query)?,
 
         Command::Stats => {
-            println!("記録済みファイル : {}", store.count_files()?);
-            println!("DB               : {}", db_path.display());
+            outln!("記録済みファイル : {}", store.count_files()?);
+            outln!("DB               : {}", db_path.display());
         }
     }
 
