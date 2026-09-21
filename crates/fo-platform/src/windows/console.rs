@@ -9,7 +9,6 @@
 //! サービスからの起動など）何もしない。**新しいコンソールは作らない** —
 //! 黙って窓を開くのは、この Issue で消そうとしているものそのもの。
 
-use std::ffi::c_void;
 use std::ptr;
 
 use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
@@ -64,7 +63,7 @@ pub fn attach_parent_console() -> bool {
         // 差し替えに失敗したら閉じる。開きっぱなしにしても使い道がない。
         // SAFETY: handle は有効で、まだ std に渡っていない。
         unsafe {
-            let _ = CloseHandle(handle as *mut c_void);
+            let _ = CloseHandle(handle);
         }
         return false;
     }
