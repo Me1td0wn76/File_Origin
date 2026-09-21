@@ -21,7 +21,7 @@ use std::sync::Mutex;
 const WINDOW_W: f64 = 1100.0;
 const WINDOW_H: f64 = 720.0;
 
-use fo_core::model::{FileStatus, SearchQuery};
+use fo_core::model::{FileStatus, SearchQuery, SortKey, SortOrder};
 use fo_platform::Platform;
 use fo_store::Store;
 use serde::Serialize;
@@ -85,6 +85,14 @@ struct DetailDto {
     lineage: Vec<String>,
 }
 
+/// 並べ替えの選択肢。ラベルの二重定義を避けるため、一覧は Rust 側が持つ。
+#[derive(Serialize)]
+struct SortOptionDto {
+    key: String,
+    /// そのキーの自然な向き（true なら降順）。
+    default_descending: bool,
+}
+
 #[derive(Serialize)]
 struct StatusDto {
     files: i64,
@@ -120,13 +128,25 @@ fn search(
     url: Option<String>,
     host: Option<String>,
     limit: Option<usize>,
+    sort: Option<String>,
+    descending: Option<bool>,
 ) -> Result<Vec<HitDto>, String> {
     let empty = |s: &Option<String>| s.as_deref().map(str::trim).unwrap_or("").is_empty();
+
+    // 未知のキーが来ても検索自体は成立させる。画面が空になるより、
+    // 既定の並びで結果が出るほうがましなので、ここでは弾かない。
+    let key = sort.as_deref().and_then(SortKey::parse).unwrap_or_default();
+    let order = match descending {
+        Some(d) => SortOrder::new(key, d),
+        None => SortOrder::natural(key),
+    };
+
     let q = SearchQuery {
         name: if empty(&name) { None } else { name },
         url: if empty(&url) { None } else { url },
         host: if empty(&host) { None } else { host },
         limit: limit.unwrap_or(200),
+        sort: order,
         ..Default::default()
     };
 
@@ -246,6 +266,18 @@ fn status(state: State<'_, App>) -> Result<StatusDto, String> {
     })
 }
 
+/// 並べ替えに使える項目の一覧。
+#[tauri::command]
+fn sort_options() -> Vec<SortOptionDto> {
+    SortKey::all()
+        .iter()
+        .map(|k| SortOptionDto {
+            key: k.as_str().to_string(),
+            default_descending: k.default_descending(),
+        })
+        .collect()
+}
+
 /// ディレクトリを走査して取り込む。
 #[tauri::command]
 fn scan(state: State<'_, App>, path: String, hash: bool) -> Result<String, String> {
@@ -346,7 +378,12 @@ fn main() {
             store: Mutex::new(store),
         })
         .invoke_handler(tauri::generate_handler![
-            search, detail, status, scan, add_origin
+            search,
+            detail,
+            status,
+            scan,
+            add_origin,
+            sort_options
         ])
         .run(tauri::generate_context!())
         .expect("GUI を起動できません");
