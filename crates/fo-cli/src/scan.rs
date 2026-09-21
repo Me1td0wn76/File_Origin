@@ -20,33 +20,26 @@ struct Summary {
     errors: usize,
 }
 
-pub fn run(
-    platform: &dyn Platform,
-    store: &Store,
-    root: &Path,
-    opts: ScanOptions,
-) -> Result<()> {
+pub fn run(platform: &dyn Platform, store: &Store, root: &Path, opts: ScanOptions) -> Result<()> {
     let mut s = Summary::default();
 
-    let root = scan_dir(platform, store, root, opts, &mut |ev| {
-        match ev {
-            ScanEvent::File {
-                verdict,
-                os_origins_recorded,
-                ..
-            } => {
-                s.seen += 1;
-                s.origins_found += os_origins_recorded;
-                match verdict {
-                    Verdict::New => s.added += 1,
-                    Verdict::Same { .. } => s.unchanged += 1,
-                    Verdict::Moved { .. } => s.moved += 1,
-                    Verdict::Copied { .. } => s.copied += 1,
-                    Verdict::Updated { .. } => s.updated += 1,
-                }
+    let root = scan_dir(platform, store, root, opts, &mut |ev| match ev {
+        ScanEvent::File {
+            verdict,
+            os_origins_recorded,
+            ..
+        } => {
+            s.seen += 1;
+            s.origins_found += os_origins_recorded;
+            match verdict {
+                Verdict::New => s.added += 1,
+                Verdict::Same { .. } => s.unchanged += 1,
+                Verdict::Moved { .. } => s.moved += 1,
+                Verdict::Copied { .. } => s.copied += 1,
+                Verdict::Updated { .. } => s.updated += 1,
             }
-            ScanEvent::Error { .. } => s.errors += 1,
         }
+        ScanEvent::Error { .. } => s.errors += 1,
     })?;
 
     println!("走査済み: {}", root.display());
@@ -65,14 +58,20 @@ pub fn run(
     }
     println!("  入手元取得: {}", s.origins_found);
     if s.errors > 0 {
-        println!("  エラー    : {}（権限不足など。処理は継続しました）", s.errors);
+        println!(
+            "  エラー    : {}（権限不足など。処理は継続しました）",
+            s.errors
+        );
     }
 
     // 入手元を読みに行くのは新規・コピーのときだけなので、
     // 新規が 0 件なら「取れなかった」と言うのは筋違い。
     if s.origins_found == 0 && s.added > 0 {
         println!();
-        println!("新規 {} 件のうち、入手元が取れたものはありませんでした。", s.added);
+        println!(
+            "新規 {} 件のうち、入手元が取れたものはありませんでした。",
+            s.added
+        );
         println!("`fo doctor` でこの環境の取得経路を確認してください。");
     }
 
