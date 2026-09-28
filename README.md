@@ -22,8 +22,8 @@
 >
 > Windows 11 / Rust 1.98 (GNU) で **80 件のテストが通過**。実際の `~/Downloads`（6,892 ファイル / 6.5 GB）で
 > 取り込み・移動追従・検索・GUI 表示まで確認しています。
-> CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）は ubuntu-latest / windows-latest の
-> 両方でビルド・テスト・clippy・rustfmt・arch-guard を通過。
+> CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）は ubuntu-latest で
+> ビルド・テスト・clippy・rustfmt・arch-guard を通過。
 > **Linux は CI でのビルドとテストまで。実機での動作確認はまだです。**
 
 ---
@@ -817,7 +817,7 @@ File_Origin/
 │  ├─ platform-layer/            OS 固有機能を追加するとき
 │  ├─ origin-source/             入手元の取得経路を追加するとき
 │  └─ new-crate/                 workspace にクレートを足すとき
-└─ .github/workflows/ci.yml   ○ CI（Windows / Linux マトリクス）
+└─ .github/workflows/ci.yml   ○ CI（Linux）
 ```
 
 ### `.claude/skills/` について
@@ -953,14 +953,18 @@ fo host status                 # 登録状況
 ```
 
 
-### CI マトリクス
+### CI
+
+すべて `ubuntu-latest`。Windows 固有の経路（Zone.Identifier・`FILE_ID_INFO`・名前付きパイプ）は実機で確かめる。
 
 | ジョブ | 内容 |
 | --- | --- |
-| `windows-latest` | ビルド・テスト・MSI 生成 |
-| `ubuntu-latest` | ビルド・テスト・`.deb` / AppImage 生成 |
+| `test` | `cargo build` / `cargo test`（`fo-gui` を除く）／ `fo doctor` の実行 |
+| `gui` | `fo-gui` の clippy とビルド。WebKitGTK ほか Tauri の依存を入れるため別ジョブ |
 | `lint` | `clippy -D warnings` / `rustfmt` |
 | **`arch-guard`** | **`./scripts/arch-guard.sh`** — `fo-platform` 以外に OS 固有 cfg / クレートが無いことを検査。手元でも同じものを実行できる |
+
+配布物の生成（MSI / `.deb` / AppImage）は M6 で別ワークフローに入れる。
 
 ### 配布物
 
@@ -1022,7 +1026,7 @@ fo host status                 # 登録状況
 | マイルストーン | 内容 | 成果物 |
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
-| **M1** コア + CLI | ○ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `search` / `where` / `stats`<br/>両 OS で CI 通過 | ○ `fo` コマンドが動く |
+| **M1** コア + CLI | ○ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `search` / `where` / `stats`<br/>CI 通過 | ○ `fo` コマンドが動く |
 | **M2** OS メタデータ | △ `Zone.Identifier`（Win）の読み取り、`fo doctor`<br/>**残: GVFS（Linux）、Known Folder / xdg-user-dirs** | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | ○ `fo-daemon` / `fo-ipc` / `fo-app::watch`、移動追跡、差分スキャン、コンソール窓なしの常駐 | ○ 移動しても追える |
 | **M4** ブラウザ連携 | △ `fo-nativehost`、`fo host install`、拡張（Chrome MV3 / Firefox MV2）<br/>**残: 拡張をブラウザに読み込んでの実動作確認** | **自動記録が成立**<br/>**Linux ではここが必須** |

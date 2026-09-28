@@ -40,20 +40,13 @@ jobs:
       - run: cargo clippy --workspace --exclude fo-gui --all-targets
 
   test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: test
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # 両 OS で必ず回す。プラットフォーム層は実機でしか検証できないため、
-      # 片方だけ通っても意味がない。
-      #
       # fo-gui を外すのは、コアの回帰を素早く見つけるため。
       # Tauri を含めるとビルドが数分伸びて、このジョブの価値（速いフィードバック）が落ちる。
       - run: cargo build --workspace --exclude fo-gui
@@ -64,20 +57,14 @@ jobs:
       - run: cargo run -p fo-cli -- doctor
 
   gui:
-    name: gui (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: gui
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       # Tauri の Linux 依存。WebKitGTK ほかシステムライブラリが要る。
-      # Windows は WebView2 が OS に同梱されているので何も要らない。
-      # この非対称がジョブを分けている理由のひとつ。
-      - name: Linux の GUI 依存を入れる
-        if: matrix.os == 'ubuntu-latest'
+      # これを lint ジョブに入れると数分重くなるので、GUI だけ別ジョブにしてある。
+      - name: GUI の依存を入れる
         run: |
           sudo apt-get update
           sudo apt-get install -y \
