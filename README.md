@@ -383,6 +383,10 @@ pub trait Platform: Send + Sync {
     /// （コンソールを持たないプロセスが `--foreground` で出力するために要る）
     fn attach_parent_console(&self) -> bool;
 
+    /// 実行ファイルを背後で起動する。**窓を作らず、親が終了しても子は残る**
+    /// （GUI や CLI からデーモンを立ち上げるために要る）
+    fn spawn_background(&self, exe: &Path, args: &[&str]) -> Result<u32>;
+
     /// 実行環境の実力を診断する（`fo doctor` が表示する）
     fn capabilities(&self) -> Capabilities;
 
@@ -727,7 +731,8 @@ fo stats                                   ○ 記録の統計
 
 # 環境と常駐
 fo doctor                                  ○ 実行環境の能力診断（§7.3）
-fo daemon status|ping|stop                 ○ 常駐サービスの状態
+fo daemon status|ping                      ○ 常駐サービスの状態
+fo daemon start|stop                       ○ 常駐サービスの起動・停止（GUI と同じ経路）
 fo daemon send '<json>'                    ○ 生のプロトコルを 1 件送る（拡張の切り分け用）
 fo host install --browser chrome --extension-id <ID>   ○ Native Messaging の登録
 fo host status|uninstall                   ○
@@ -897,6 +902,7 @@ GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 | ファイル監視 | ○ | ○ | `notify` 経由。静穏時間つき |
 | 変更ジャーナル | × | × | 任意の高速化。既定の差分スキャンで代替（[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
 | IPC / デーモン | ○ 名前付きパイプ | ○ Unix ソケット | コンソール窓なしで常駐 |
+| デーモンの起動・停止 | ○ | ○ | CLI（`fo daemon start`\|`stop`）と GUI の「状態」から。同じ経路 |
 | Native Messaging | ○ | ○ | ホストとマニフェスト設置。**拡張の実動作は未検証** |
 | GUI | ○ | 未検証 | Linux は CI のビルドのみ |
 
@@ -927,8 +933,9 @@ GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 fo doctor                      # この環境で何が使えるか
 fo scan                        # 既定のダウンロードフォルダを取り込む
 fo search --sort acquired      # 取得日時の新しい順に見る
-fo-daemon                      # 常駐させる（窓は出ません）
+fo daemon start                # 常駐させる（窓は出ません）
 fo daemon status               # 動いているか、ログはどこか
+fo daemon stop                 # 止める
 ```
 
 ブラウザからの自動記録まで繋ぐには、さらに次が要ります。
@@ -938,7 +945,7 @@ fo daemon status               # 動いているか、ログはどこか
 # 2. その ID で Native Messaging ホストを登録する
 fo host install --browser chrome --extension-id <ID>
 fo host status                 # 登録状況
-# 3. fo-daemon を起動しておく
+# 3. デーモンを起動しておく（`fo daemon start`、または GUI の「状態」から）
 ```
 
 
@@ -1019,7 +1026,7 @@ fo host status                 # 登録状況
 | **M2** OS メタデータ | △ `Zone.Identifier`（Win）の読み取り、`fo doctor`<br/>**残: GVFS（Linux）、Known Folder / xdg-user-dirs** | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | ○ `fo-daemon` / `fo-ipc` / `fo-app::watch`、移動追跡、差分スキャン、コンソール窓なしの常駐 | ○ 移動しても追える |
 | **M4** ブラウザ連携 | △ `fo-nativehost`、`fo host install`、拡張（Chrome MV3 / Firefox MV2）<br/>**残: 拡張をブラウザに読み込んでの実動作確認** | **自動記録が成立**<br/>**Linux ではここが必須** |
-| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
+| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み・デーモンの起動と停止<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
 | **M6** 配布 | MSI / `.deb` / AppImage、ログオン時の自動起動、ストア申請 | **v1.0** |
 
 > **M4 がプロダクトの成立点。** M1〜M3 は「手で登録すれば便利なツール」に留まるが、M4 で初めて「意識せずに溜まっていく」という本来の価値が出る。
