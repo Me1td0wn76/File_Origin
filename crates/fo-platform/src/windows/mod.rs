@@ -8,6 +8,7 @@ mod ipc;
 mod nativehost;
 mod origin;
 pub(crate) mod paths;
+mod process;
 
 use crate::ipc::LocalSocket;
 use crate::nativehost::NativeHostInstaller;
@@ -66,6 +67,10 @@ impl Platform for WindowsPlatform {
 
     fn attach_parent_console(&self) -> bool {
         console::attach_parent_console()
+    }
+
+    fn spawn_background(&self, exe: &std::path::Path, args: &[&str]) -> Result<u32> {
+        process::spawn_background(exe, args)
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {

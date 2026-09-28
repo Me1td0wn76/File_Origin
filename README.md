@@ -821,18 +821,6 @@ File_Origin/　　
 └─ .github/workflows/ci.yml   ○ CI（Linux）　　
 ```
 
-### `.claude/skills/` について
-
-[Claude Code](https://claude.com/claude-code) でこのリポジトリを触るとき、設計の不変条件を守らせるための手順書。人間が読んでも設計判断の理由が分かるように書いてある。
-
-| skill | 使うとき | 守らせるもの |
-| --- | --- | --- |
-| `platform-layer` | Windows / Linux の差が絡む機能を足すとき | 設計方針 P1（OS 差は 1 層に閉じ込める）。trait 設計・モック・README 対応表の更新まで |
-| `origin-source` | 新しい入手元の取得経路を足すとき | 設計方針 P5（出所と確度を明示）。DB・`fo doctor`・プライバシー既定まで |
-| `new-crate` | workspace にクレートを足すとき | レイヤーの依存方向（上位 → 下位の一方向） |
-
-Claude Code を使わない場合は、これらを **コントリビューションガイドとして読めばよい**。
-
 ### 主要な依存クレート（想定）
 
 | 用途 | クレート |
