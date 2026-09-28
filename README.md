@@ -368,13 +368,21 @@ pub trait Platform: Send + Sync {
     fn origin_meta(&self)    -> &dyn OriginMetadata;
     fn paths(&self)          -> &dyn PlatformPaths;
     fn ipc(&self)            -> &dyn IpcTransport;
-    fn autostart(&self)      -> &dyn Autostart;
     fn host_installer(&self) -> &dyn NativeHostInstaller;
+
+    /// 監視器を新しく作る。
+    /// 借りるのではなく毎回作るのは、可変状態を持ちデーモンのスレッドが専有するため
     fn new_watcher(&self)    -> Result<Box<dyn FsWatcher>>;
-    fn journal(&self)        -> Option<&dyn ChangeJournal>;
+
+    /// 起動元の端末に標準出力を繋ぐ。**新しいコンソールは作らない**
+    /// （コンソールを持たないプロセスが `--foreground` で出力するために要る）
+    fn attach_parent_console(&self) -> bool;
 
     /// 実行環境の実力を診断する（`fo doctor` が表示する）
     fn capabilities(&self) -> Capabilities;
+
+    // TODO: `ChangeJournal`（USN / fanotify）と `Autostart` はまだ生やしていない。
+    // 使われない抽象が設計を縛るのを避けるため、実装が付くときに足す。
 }
 
 /// 唯一の cfg 分岐点
@@ -403,6 +411,7 @@ pub fn current() -> Box<dyn Platform> {
 | **既定の監視対象** | `%USERPROFILE%\Downloads` | `xdg-user-dir DOWNLOAD` |
 | **Native Messaging<br/>マニフェスト** | レジストリ<br/>`HKCU\Software\Google\Chrome\NativeMessagingHosts\`<br/>`HKCU\Software\Mozilla\NativeMessagingHosts\` | `~/.config/google-chrome/NativeMessagingHosts/`<br/>`~/.mozilla/native-messaging-hosts/` |
 | **GUI レンダラ** | WebView2（Edge ランタイム） | WebKitGTK |
+| **常駐時のコンソール** | GUI サブシステムにして窓を出さない。`--foreground` は `AttachConsole(ATTACH_PARENT_PROCESS)` で起動元の端末に繋ぐ | 区別が無い。標準出力は最初から繋がっている |
 | **配布形式** | MSI / NSIS / winget | `.deb` / `.rpm` / AppImage / Flatpak |
 
 ### 7.3 プラットフォーム間の非対称性と、その埋め方
@@ -688,24 +697,49 @@ M1 の検索は **`LIKE` と索引** で行う。数万件規模の個人 DB に
   - Windows: 現在のユーザー SID のみを許可する DACL をパイプに設定
   - Linux: ソケットを `0600`、`$XDG_RUNTIME_DIR`（`0700`）配下に配置
 
-### CLI（想定インターフェース）
+### CLI
+
+○ は実装済み。
 
 ```bash
-fo scan ~/Downloads                 # 既存ファイルを取り込む（OS メタデータも読む）
-fo add <path> --url <url>           # 手動で入手元を登録
-fo show <path>                      # 来歴を表示
-fo search --url example.com         # 入手元 URL / 参照元 URL の部分一致
-fo search --host example.com        # ホスト名（サブドメインも当たる）
-fo search --name "setup*"           # ファイル名。過去の名前も当たる。ワイルドカード無しなら部分一致
-fo search --since 2026-01-01 --until 2026-01-31   # 取得日（両端含む）
-fo where <sha256|name>              # 現在の保存場所を解決
-fo verify                           # 実体と DB の突き合わせ
-fo rescan                           # 取りこぼしの補正
-fo daemon start|stop|status
-fo host install --browser chrome    # Native Messaging マニフェストを設置
-fo doctor                           # 実行環境の能力診断（§7.3）
-fo export --format json             # データの持ち出し（ロックインしない）
+# 取り込み・登録
+fo scan [path] [--hash] [--no-recursive]   ○ 走査して取り込む。省略時は既定のダウンロードフォルダ
+fo add <path> --url <url> [--referrer <url>]  ○ 手動で入手元を登録
+
+# 調べる
+fo show <path>                             ○ 来歴（入手元・パス履歴・コピー元）
+fo search --name "setup*"                  ○ ファイル名。過去の名前も当たる
+fo search --url example.com                ○ 入手元 URL / 参照元 URL の部分一致
+fo search --host example.com               ○ ホスト名（サブドメインも当たる）
+fo search --since 2026-01-01 --until 2026-01-31   ○ 取得日（両端含む）
+fo search --sort acquired|name|size|confidence|first-seen [--asc|--desc]  ○ 並べ替え
+fo where <sha256|name>                     ○ 現在の保存場所を解決
+fo stats                                   ○ 記録の統計
+
+# 環境と常駐
+fo doctor                                  ○ 実行環境の能力診断（§7.3）
+fo daemon status|ping|stop                 ○ 常駐サービスの状態
+fo daemon send '<json>'                    ○ 生のプロトコルを 1 件送る（拡張の切り分け用）
+fo host install --browser chrome --extension-id <ID>   ○ Native Messaging の登録
+fo host status|uninstall                   ○
+
+# 未実装
+fo verify                                     実体と DB の突き合わせ
+fo rescan                                     取りこぼしの補正
+fo export --format json                       データの持ち出し（ロックインしない）
+fo note / fo tag                              メモ・タグ（スキーマはあるが API が無い）
 ```
+
+常駐サービスは独立した実行ファイルです。
+
+```bash
+fo-daemon [--root <dir>]... [--hash] [--foreground] [--verbose] [--no-initial-scan]
+```
+
+`--foreground` を付けない限り**コンソール窓を出さず**、ログは
+`PlatformPaths::log_dir()` 配下（`fo-daemon.log`、2 MB で 3 世代ローテーション）に書きます。
+既定ではログ中の入手元 URL をホストまでに削ります（`--verbose` で全体）。
+
 
 ---
 
@@ -719,43 +753,40 @@ File_Origin/
 ├─ Cargo.toml                 ○ workspace（依存はここに集約）
 ├─ rust-toolchain.toml        ○
 ├─ crates/
-│  ├─ fo-core/                ○ ドメイン + ユースケース（OS 非依存）
-│  │  └─ src/
-│  │     ├─ model.rs          ○ FileRecord / Origin / Confidence
-│  │     ├─ identity.rs       ○ 同一性判定のはしご（§8.1 の実装）
-│  │     └─ hash.rs           ○ SHA-256
+│  ├─ fo-core/                ○ ドメイン（OS 非依存）
+│  │  └─ src/{model,identity,hash}.rs
 │  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ
 │  │  └─ src/
 │  │     ├─ lib.rs            ○ trait 定義・型・current()
+│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）
+│  │     ├─ watcher.rs        ○ ファイル監視（notify）
+│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト
 │  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys
-│  │     │  └─ {identity,origin,paths}.rs
-│  │     │     ＋ 今後: {watcher,usn,ipc,autostart}.rs
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs
+│  │     │     ＋ 今後: {usn,autostart}.rs
 │  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr
-│  │     │  └─ {identity,origin,paths}.rs
-│  │     │     ＋ 今後: {gvfs,watcher,fanotify,ipc,autostart}.rs
+│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs
+│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs
 │  │     └─ mock/             ○ テスト用のインメモリ実装
 │  ├─ fo-store/               ○ SQLite + マイグレーション
-│  │  └─ migrations/0001_init.sql
+│  │  └─ migrations/{0001_init,0002_path_name}.sql
 │  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）
-│  │  └─ src/{ingest,scan,describe,manual}.rs
+│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs
+│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル
 │  ├─ fo-cli/                 ○ CLI (bin `fo`)
-│  ├─ fo-watcher/                監視・スキャン・同一性解決エンジン (M3)
-│  ├─ fo-ipc/                    JSON-RPC のメッセージ定義 (M3)
-│  ├─ fo-daemon/                 常駐サービス (bin) (M3)
-│  └─ fo-nativehost/             Native Messaging ホスト (bin) (M4)
-├─ gui/                          # Tauri アプリ
-│  ├─ src-tauri/
-│  └─ src/                       # フロントエンド
-├─ extension/
-│  ├─ shared/                    # 共通ロジック
-│  ├─ chrome/                    # MV3
-│  └─ firefox/                   # WebExtensions
-├─ packaging/
-│  ├─ windows/                   # WiX / NSIS、タスクスケジューラ登録
-│  └─ linux/                     # .deb / .rpm / AppImage、systemd --user unit
-├─ gui/                          Tauri アプリ (M5)
-├─ extension/                    ブラウザ拡張 (M4)
+│  ├─ fo-daemon/              ○ 常駐サービス (bin)
+│  │  └─ src/{main,logging}.rs
+│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)
+├─ gui/                       ○ デスクトップ GUI
+│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)
+│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）
+├─ extension/                 ○ ブラウザ拡張
+│  ├─ shared/                 ○ 共通ロジック
+│  ├─ chrome/                 ○ MV3
+│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）
 ├─ packaging/                    インストーラ (M6)
+│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録
+│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit
 ├─ scripts/
 │  └─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
 ├─ docs/
@@ -957,6 +988,9 @@ fo host status                 # 登録状況
 | D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ○ 決定 |
 | D10 | WhereFrom との関係 | **差分の明示に留める。** 相手は Windows 専用・CLI のみ・ごく初期段階でスコープが異なり、現時点で協調する対象が無い。Zone.Identifier のパース実装は参考にし、その際はクレジットする | ○ 決定 |
 | D11 | ユースケース層の置き場所 | **`fo-app` クレートを新設。** 当初案の `fo-core::usecase` は、`fo-store → fo-core` の依存があるため `fo-core` からストアを呼べず成立しない。両方の上に載る別クレートで依存方向を守る | ○ 決定 |
+| D12 | 監視エンジンの置き場所 | **`fo-watcher` クレートは作らず `fo-app::watch` に置く。** やることは「イベントが来たら `ingest_file` を呼ぶ」で `fo-app` と同じ層。別クレートにしても依存グラフは変わらず、ビルド単位が増えるだけ | ○ 決定 |
+| D13 | 非同期ランタイム | **tokio を使わない。** 仕事は「1 本の監視ループ」と「たまに来る接続」だけで、非同期ランタイムを入れても速くならず依存とビルド時間が増える。std スレッドと `Mutex<Store>` で足りる | ○ 決定 |
+| D14 | GUI のフロントエンド構成 | **バンドラを使わず素の HTML/CSS/JS（`gui/web/`）。** この規模ではフレームワークの利得が無く、npm を挟まない分 `cargo build` だけでビルドが完結する。D5（React 暫定）はこれで置き換え。規模が増えたら見直す | ○ 決定 |
 
 ---
 
