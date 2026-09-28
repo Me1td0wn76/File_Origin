@@ -1041,5 +1041,4 @@ fo host status                 # 登録状況
 
 Rust 界隈で慣習的な `MIT OR Apache-2.0` ではなく MIT 単独を選択。利用者にとって最も明快で、ブラウザ拡張側のコードとも揃えやすいため。
 
-> 注: `LICENSE` の著作権表記は現在 `Copyright (c) 2026 File Origin contributors` になっている。
-> 個人名や GitHub ハンドルにしたい場合はこの行を書き換えること。
+
