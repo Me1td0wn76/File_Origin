@@ -8,13 +8,20 @@ use fo_ipc::{Request, Response};
 use fo_platform::Platform;
 
 /// デーモンが動いているか。`fo doctor` と `status` が使う。
-pub fn is_running(platform: &dyn Platform) -> bool {
-    platform
-        .ipc()
-        .connect()
-        .ok()
-        .and_then(|mut s| fo_ipc::round_trip(&mut s, &Request::Ping).ok())
-        .is_some()
+///
+/// 判定そのものは `fo-app` にある。GUI も同じものを使うので、
+/// 「動いている」の定義が 2 つに割れないようにしておく。
+pub use fo_app::daemon::is_running;
+
+/// 背後で起動する。
+pub fn start(platform: &dyn Platform) -> Result<()> {
+    if fo_app::daemon::start(platform)? {
+        outln!("起動しました。");
+        outln!("接続先 : {}", platform.ipc().endpoint_display());
+    } else {
+        outln!("すでに動いています。");
+    }
+    Ok(())
 }
 
 pub fn status(platform: &dyn Platform) -> Result<()> {
@@ -56,12 +63,17 @@ pub fn status(platform: &dyn Platform) -> Result<()> {
 }
 
 pub fn stop(platform: &dyn Platform) -> Result<()> {
-    let mut stream = platform
-        .ipc()
-        .connect()
-        .context("デーモンに接続できません（動いていない可能性があります）")?;
-    fo_ipc::round_trip(&mut stream, &Request::Shutdown)?;
-    outln!("停止を要求しました。");
+    if !is_running(platform) {
+        outln!("動いていません。");
+        return Ok(());
+    }
+    // 落ちきるまで見届ける。要求だけ出して抜けると、直後の `fo daemon status` が
+    // まだ「稼働中」と答えて、止まったのかどうか分からない。
+    if fo_app::daemon::stop(platform)? {
+        outln!("停止しました。");
+    } else {
+        outln!("停止を要求しましたが、まだ終了していません。");
+    }
     Ok(())
 }
 
