@@ -96,9 +96,16 @@ jobs:
       # フロントエンドは手書きの静的ファイル（gui/web）。
       # バンドラを使わないので npm は要らないが、tauri.conf.json の
       # frontendDist が指す先が無いとビルドが落ちる。先に確かめる。
+      #
+      # tokens.css / components.css はデザインシステムからの取り込み物
+      # （scripts/sync-design-system.sh）。無くてもビルドは通ってしまい、
+      # 素の HTML が出るだけなので気付けない。ここで落とす。
       - name: フロントエンドの存在を確認
         shell: bash
-        run: test -f gui/web/index.html
+        run: |
+          for f in index.html app.css app.js tokens.css components.css; do
+            test -f "gui/web/$f" || { echo "gui/web/$f がありません" >&2; exit 1; }
+          done
 
       - run: cargo clippy -p fo-gui --all-targets
       - run: cargo build -p fo-gui

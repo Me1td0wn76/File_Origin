@@ -215,6 +215,15 @@ pub trait Platform: Send + Sync {
     fn ipc(&self) -> &dyn IpcTransport;
     fn host_installer(&self) -> &dyn NativeHostInstaller;
 
+    /// 起動元の端末に標準出力・標準エラーを繋ぐ。繋げたら `true`。
+    ///
+    /// コンソールを持たないプロセス（Windows の GUI サブシステム）が、
+    /// 端末から起動されたときだけ出力を見せるために使う。
+    /// **新しいコンソールは作らない。** 窓が勝手に開くのを避けるため。
+    ///
+    /// Unix は標準出力が最初から繋がっているので何もせず `true` を返す。
+    fn attach_parent_console(&self) -> bool;
+
     /// 新しい監視器を作る。
     ///
     /// `Platform` から借りるのではなく毎回作るのは、監視器が可変状態を持ち、

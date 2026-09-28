@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner/banner-dark.svg">
+  <img alt="File Origin — ダウンロードの入手元を、ファイルが動いても追い続ける。" src="assets/banner/banner-light.svg" width="100%">
+</picture>
+
 # File Origin
 
 > ダウンロードしたファイルの **入手元・来歴** を記録し、後から確認できるようにするローカル完結型の OSS。
@@ -9,13 +14,17 @@
 - **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
 - **移動・リネーム追跡** — ファイルが動いても追い続ける
 
-> **Status: M1 実装中 — Windows / Linux 両方で CI が通っている**
+> **Status: M5 まで通し動作 — CLI・常駐デーモン・ブラウザ連携・GUI が動く**
 > 本 README はアーキテクチャ設計文書を兼ねます。
 > - 設計判断とその理由: [docs/adr/](docs/adr/)・[未決事項](#15-未決事項decision-log)
 > - 既存 OSS・製品の調査: [docs/prior-art.md](docs/prior-art.md)（完了）
 > - 何がどこまで動くか: [現在の実装状況](#現在の実装状況)
 >
-> Windows 11 / Rust 1.98 (GNU) で `cargo test` 28 件パス、`fo scan` → 移動 → 再 scan で入手元の追従を確認済み。CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）で ubuntu-latest / windows-latest の両方がビルド・テスト・clippy・rustfmt・arch-guard を通過。Linux の実機での `fo scan` はまだ。
+> Windows 11 / Rust 1.98 (GNU) で **80 件のテストが通過**。実際の `~/Downloads`（6,892 ファイル / 6.5 GB）で
+> 取り込み・移動追従・検索・GUI 表示まで確認しています。
+> CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）は ubuntu-latest / windows-latest の
+> 両方でビルド・テスト・clippy・rustfmt・arch-guard を通過。
+> **Linux は CI でのビルドとテストまで。実機での動作確認はまだです。**
 
 ---
 
@@ -232,14 +241,14 @@ fo show ./setup.zip  または  GUI でファイルを選択
                             │ 同一のユースケース API を呼ぶ
 ┌───────────────────────────▼─────────────────────────────────┐
 │  アプリケーション層   fo-app                                  │
-│  ingest / scan / describe / add_manual_origin / …           │
+│  ingest / scan / watch / search / describe / browser / …    │
 └──────────┬────────────────────────────────┬─────────────────┘
            │                                │
 ┌──────────▼──────────────┐  ┌──────────────▼─────────────────┐
 │  ドメイン層 fo-core      │  │  サービス層                     │
-│  FileRecord / Origin    │  │  fo-store   (SQLite)           │
-│  StableFileId / Digest  │  │  fo-watcher (監視エンジン)       │
-│  ※ OS を一切知らない     │  │  fo-ipc     (プロトコル)         │
+│  FileRecord / Origin    │  │  fo-store (SQLite)             │
+│  StableFileId / Digest  │  │  fo-ipc   (デーモンとの通信)     │
+│  ※ OS を一切知らない     │  │                                │
 └──────────┬──────────────┘  └──────────────┬─────────────────┘
            │                                │
 ┌──────────▼────────────────────────────────▼─────────────────┐
@@ -266,12 +275,16 @@ fo show ./setup.zip  または  GUI でファイルを選択
 | `fo-core` | lib | ドメインモデル・ユースケース | × なし |
 | `fo-platform` | lib | **OS 抽象化 trait とその実装** | ○ **ここだけ** |
 | `fo-store` | lib | SQLite 永続化・マイグレーション | × なし |
-| `fo-app` | lib | **ユースケース。CLI と GUI が共有する** | × なし |
-| `fo-watcher` | lib | 監視・スキャン・同一性解決のエンジン | ×（`fo-platform` 経由） |
-| `fo-ipc` | lib | IPC のメッセージ定義とクライアント / サーバ | ×（`fo-platform` 経由） |
-| `fo-daemon` | bin | 常駐サービス本体 | × |
-| `fo-cli` | bin | コマンドラインインターフェース | × |
-| `fo-nativehost` | bin | Native Messaging ホスト | × |
+| `fo-app` | lib | **ユースケース。CLI と GUI が共有する**（取り込み・走査・監視・検索・来歴） | × なし |
+| `fo-ipc` | lib | デーモンとの通信プロトコル（行区切り JSON） | × なし |
+| `fo-daemon` | bin | 常駐サービス。監視と IPC サーバ | × |
+| `fo-cli` | bin | コマンドラインインターフェース（`fo`） | × |
+| `fo-nativehost` | bin | Native Messaging ホスト。拡張 ↔ デーモンの中継 | × |
+| `fo-gui` | bin | デスクトップ GUI（Tauri）。`gui/src-tauri/` | × |
+
+> 当初案にあった `fo-watcher` は作っていません。やることは「イベントが来たら `ingest_file` を呼ぶ」で
+> `fo-app` と同じ層であり、別クレートにしても依存グラフが変わらないためです（D12）。
+> 監視エンジンは `fo-app::watch` にあります。
 
 > **不変条件（CI で機械的に検査する）**
 > `fo-platform` 以外のクレートに `#[cfg(windows)]` / `#[cfg(target_os = "linux")]` / `windows-rs` / `nix` が現れたら **ビルドを落とす**。
@@ -360,13 +373,21 @@ pub trait Platform: Send + Sync {
     fn origin_meta(&self)    -> &dyn OriginMetadata;
     fn paths(&self)          -> &dyn PlatformPaths;
     fn ipc(&self)            -> &dyn IpcTransport;
-    fn autostart(&self)      -> &dyn Autostart;
     fn host_installer(&self) -> &dyn NativeHostInstaller;
+
+    /// 監視器を新しく作る。
+    /// 借りるのではなく毎回作るのは、可変状態を持ちデーモンのスレッドが専有するため
     fn new_watcher(&self)    -> Result<Box<dyn FsWatcher>>;
-    fn journal(&self)        -> Option<&dyn ChangeJournal>;
+
+    /// 起動元の端末に標準出力を繋ぐ。**新しいコンソールは作らない**
+    /// （コンソールを持たないプロセスが `--foreground` で出力するために要る）
+    fn attach_parent_console(&self) -> bool;
 
     /// 実行環境の実力を診断する（`fo doctor` が表示する）
     fn capabilities(&self) -> Capabilities;
+
+    // TODO: `ChangeJournal`（USN / fanotify）と `Autostart` はまだ生やしていない。
+    // 使われない抽象が設計を縛るのを避けるため、実装が付くときに足す。
 }
 
 /// 唯一の cfg 分岐点
@@ -395,6 +416,7 @@ pub fn current() -> Box<dyn Platform> {
 | **既定の監視対象** | `%USERPROFILE%\Downloads` | `xdg-user-dir DOWNLOAD` |
 | **Native Messaging<br/>マニフェスト** | レジストリ<br/>`HKCU\Software\Google\Chrome\NativeMessagingHosts\`<br/>`HKCU\Software\Mozilla\NativeMessagingHosts\` | `~/.config/google-chrome/NativeMessagingHosts/`<br/>`~/.mozilla/native-messaging-hosts/` |
 | **GUI レンダラ** | WebView2（Edge ランタイム） | WebKitGTK |
+| **常駐時のコンソール** | GUI サブシステムにして窓を出さない。`--foreground` は `AttachConsole(ATTACH_PARENT_PROCESS)` で起動元の端末に繋ぐ | 区別が無い。標準出力は最初から繋がっている |
 | **配布形式** | MSI / NSIS / winget | `.deb` / `.rpm` / AppImage / Flatpak |
 
 ### 7.3 プラットフォーム間の非対称性と、その埋め方
@@ -672,7 +694,11 @@ M1 の検索は **`LIKE` と索引** で行う。数万件規模の個人 DB に
 
 ### IPC
 
-- **プロトコル**: JSON-RPC 2.0 over stream（`fo-ipc` に型定義を集約）
+- **プロトコル**: **行区切り JSON**（1 行 1 メッセージ、UTF-8、末尾 `
+`）。`fo-ipc` に型定義を集約
+  - JSON-RPC 2.0 の汎用性は要らない。話す相手が自分たちだけなので、素直な `{"kind": ...}` の方が
+    読みやすく、他言語（ブラウザ拡張）からも実装しやすい
+  - **未知のフィールドは無視する。** 拡張とデーモンの更新は同時にできないため
 - **トランスポート**: `IpcTransport` trait で抽象化
   - Windows: 名前付きパイプ `\\.\pipe\file-origin`
   - Linux: Unix ドメインソケット `$XDG_RUNTIME_DIR/file-origin.sock`
@@ -680,24 +706,49 @@ M1 の検索は **`LIKE` と索引** で行う。数万件規模の個人 DB に
   - Windows: 現在のユーザー SID のみを許可する DACL をパイプに設定
   - Linux: ソケットを `0600`、`$XDG_RUNTIME_DIR`（`0700`）配下に配置
 
-### CLI（想定インターフェース）
+### CLI
+
+○ は実装済み。
 
 ```bash
-fo scan ~/Downloads                 # 既存ファイルを取り込む（OS メタデータも読む）
-fo add <path> --url <url>           # 手動で入手元を登録
-fo show <path>                      # 来歴を表示
-fo search --url example.com         # 入手元 URL / 参照元 URL の部分一致
-fo search --host example.com        # ホスト名（サブドメインも当たる）
-fo search --name "setup*"           # ファイル名。過去の名前も当たる。ワイルドカード無しなら部分一致
-fo search --since 2026-01-01 --until 2026-01-31   # 取得日（両端含む）
-fo where <sha256|name>              # 現在の保存場所を解決
-fo verify                           # 実体と DB の突き合わせ
-fo rescan                           # 取りこぼしの補正
-fo daemon start|stop|status
-fo host install --browser chrome    # Native Messaging マニフェストを設置
-fo doctor                           # 実行環境の能力診断（§7.3）
-fo export --format json             # データの持ち出し（ロックインしない）
+# 取り込み・登録
+fo scan [path] [--hash] [--no-recursive]   ○ 走査して取り込む。省略時は既定のダウンロードフォルダ
+fo add <path> --url <url> [--referrer <url>]  ○ 手動で入手元を登録
+
+# 調べる
+fo show <path>                             ○ 来歴（入手元・パス履歴・コピー元）
+fo search --name "setup*"                  ○ ファイル名。過去の名前も当たる
+fo search --url example.com                ○ 入手元 URL / 参照元 URL の部分一致
+fo search --host example.com               ○ ホスト名（サブドメインも当たる）
+fo search --since 2026-01-01 --until 2026-01-31   ○ 取得日（両端含む）
+fo search --sort acquired|name|size|confidence|first-seen [--asc|--desc]  ○ 並べ替え
+fo where <sha256|name>                     ○ 現在の保存場所を解決
+fo stats                                   ○ 記録の統計
+
+# 環境と常駐
+fo doctor                                  ○ 実行環境の能力診断（§7.3）
+fo daemon status|ping|stop                 ○ 常駐サービスの状態
+fo daemon send '<json>'                    ○ 生のプロトコルを 1 件送る（拡張の切り分け用）
+fo host install --browser chrome --extension-id <ID>   ○ Native Messaging の登録
+fo host status|uninstall                   ○
+
+# 未実装
+fo verify                                     実体と DB の突き合わせ
+fo rescan                                     取りこぼしの補正
+fo export --format json                       データの持ち出し（ロックインしない）
+fo note / fo tag                              メモ・タグ（スキーマはあるが API が無い）
 ```
+
+常駐サービスは独立した実行ファイルです。
+
+```bash
+fo-daemon [--root <dir>]... [--hash] [--foreground] [--verbose] [--no-initial-scan]
+```
+
+`--foreground` を付けない限り**コンソール窓を出さず**、ログは
+`PlatformPaths::log_dir()` 配下（`fo-daemon.log`、2 MB で 3 世代ローテーション）に書きます。
+既定ではログ中の入手元 URL をホストまでに削ります（`--verbose` で全体）。
+
 
 ---
 
@@ -711,47 +762,56 @@ File_Origin/
 ├─ Cargo.toml                 ○ workspace（依存はここに集約）
 ├─ rust-toolchain.toml        ○
 ├─ crates/
-│  ├─ fo-core/                ○ ドメイン + ユースケース（OS 非依存）
-│  │  └─ src/
-│  │     ├─ model.rs          ○ FileRecord / Origin / Confidence
-│  │     ├─ identity.rs       ○ 同一性判定のはしご（§8.1 の実装）
-│  │     └─ hash.rs           ○ SHA-256
+│  ├─ fo-core/                ○ ドメイン（OS 非依存）
+│  │  └─ src/{model,identity,hash}.rs
 │  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ
 │  │  └─ src/
 │  │     ├─ lib.rs            ○ trait 定義・型・current()
+│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）
+│  │     ├─ watcher.rs        ○ ファイル監視（notify）
+│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト
 │  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys
-│  │     │  └─ {identity,origin,paths}.rs
-│  │     │     ＋ 今後: {watcher,usn,ipc,autostart}.rs
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs
+│  │     │     ＋ 今後: {usn,autostart}.rs
 │  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr
-│  │     │  └─ {identity,origin,paths}.rs
-│  │     │     ＋ 今後: {gvfs,watcher,fanotify,ipc,autostart}.rs
+│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs
+│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs
 │  │     └─ mock/             ○ テスト用のインメモリ実装
 │  ├─ fo-store/               ○ SQLite + マイグレーション
-│  │  └─ migrations/0001_init.sql
+│  │  └─ migrations/{0001_init,0002_path_name}.sql
 │  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）
-│  │  └─ src/{ingest,scan,describe,manual}.rs
+│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs
+│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル
 │  ├─ fo-cli/                 ○ CLI (bin `fo`)
-│  ├─ fo-watcher/                監視・スキャン・同一性解決エンジン (M3)
-│  ├─ fo-ipc/                    JSON-RPC のメッセージ定義 (M3)
-│  ├─ fo-daemon/                 常駐サービス (bin) (M3)
-│  └─ fo-nativehost/             Native Messaging ホスト (bin) (M4)
-├─ gui/                          # Tauri アプリ
-│  ├─ src-tauri/
-│  └─ src/                       # フロントエンド
-├─ extension/
-│  ├─ shared/                    # 共通ロジック
-│  ├─ chrome/                    # MV3
-│  └─ firefox/                   # WebExtensions
-├─ packaging/
-│  ├─ windows/                   # WiX / NSIS、タスクスケジューラ登録
-│  └─ linux/                     # .deb / .rpm / AppImage、systemd --user unit
-├─ gui/                          Tauri アプリ (M5)
-├─ extension/                    ブラウザ拡張 (M4)
+│  ├─ fo-daemon/              ○ 常駐サービス (bin)
+│  │  └─ src/{main,logging}.rs
+│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)
+├─ gui/                       ○ デスクトップ GUI
+│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)
+│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）
+│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）
+│     ├─ components.css       ○ fo- 接頭辞の部品（同上）
+│     ├─ app.css              ○ この画面の組み立てだけ
+│     ├─ app.js               ○ 検索・詳細・取り込み
+│     └─ index.html
+├─ assets/                    ○ 見た目の原本（ここを直してから配る）
+│  ├─ banner/                 ○ README・GitHub 用のバナー
+│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）
+│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個
+├─ extension/                 ○ ブラウザ拡張
+│  ├─ shared/                 ○ 共通ロジック
+│  ├─ chrome/                 ○ MV3
+│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）
 ├─ packaging/                    インストーラ (M6)
+│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録
+│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit
 ├─ scripts/
-│  └─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
+│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
+│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む
 ├─ docs/
 │  ├─ adr/                    ○ Architecture Decision Records
+│  ├─ design-system.md        ○ GUI の見た目の決まり
+│  ├─ brand.md                ○ アイコンとバナーの使い方
 │  └─ prior-art.md            ○ 既存 OSS・製品の調査結果
 ├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill
 │  ├─ platform-layer/            OS 固有機能を追加するとき
@@ -832,36 +892,66 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 
 ### 現在の実装状況
 
-**`fo doctor` / `fo scan` / `fo show` / `fo add` / `fo stats` が動く。** Windows で以下を確認済み:
-
-- `fo scan --hash` で Zone.Identifier から入手元を取得
-- ファイルを **移動＋リネーム** → 再 scan で同一ファイルと認識し、入手元が追従（はしご 1 段目）
-- ファイルを **コピー** → 再 scan でコピーと判定し `derived_from` が付く（はしご 3 段目）
-- 何も変えずに再 scan → 変更なし
-- パス履歴が `file_paths` に残る（旧パスは `is_current = 0`）
-- `fo show` がパス履歴・コピー元・コピー元から継承した入手元を表示する
-- `fo add --url` で手動登録。未記録のファイルは同時に取り込む。Zone.Identifier の記録とは別行で積まれる
-- `fo search` が名前（過去の名前含む）・URL・ホスト・日付範囲で引ける。`fo where` はファイル名か SHA-256 から現在地を返す
-- 0001 で作った DB を開くと 0002（`name` 列）が自動適用され、既存行が埋め戻される
-
-**Linux は CI（ubuntu-latest）でビルド・テスト・`fo doctor` まで確認済み。** 実ファイルでの `fo scan` はまだ誰も回していない。
+CLI（`fo`）・常駐デーモン（`fo-daemon`）・Native Messaging ホスト（`fo-nativehost`）・
+GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
 | 安定識別子 | ○ | ○ | Win: `FILE_ID_INFO` (FFI) / Linux: `statx` |
-| 識別子→パス逆引き | × | × | Win は M3 で実装予定。Linux は OS に存在しない |
-| 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は M2（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
+| 識別子→パス逆引き | × | × | Win は `OpenFileById` で可能だが未実装。Linux は OS に存在しない |
+| 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は未実装（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
 | データ配置先 | ○ | ○ | `%LOCALAPPDATA%` / XDG |
-| SQLite スキーマ | ○ | ○ | マイグレーション込み |
+| SQLite スキーマ | ○ | ○ | マイグレーション 0001・0002 |
 | 同一性判定のはしご | ○ | ○ | 純粋関数・テスト済み |
 | SHA-256 | ○ | ○ | 遅延計算（[ADR-0007](docs/adr/0007-hashing-strategy.md)） |
-| ファイル監視 | × | × | M3 |
-| 変更ジャーナル | × | × | M3（任意機能・[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
-| IPC / デーモン | × | × | M3 |
-| ブラウザ拡張 | × | × | M4。**Linux ではこれが必須** |
-| GUI | × | × | M5 |
+| 検索・並べ替え | ○ | ○ | 名前（過去の名前含む）・URL・ホスト・日付・確度 |
+| ファイル監視 | ○ | ○ | `notify` 経由。静穏時間つき |
+| 変更ジャーナル | × | × | 任意の高速化。既定の差分スキャンで代替（[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
+| IPC / デーモン | ○ 名前付きパイプ | ○ Unix ソケット | コンソール窓なしで常駐 |
+| Native Messaging | ○ | ○ | ホストとマニフェスト設置。**拡張の実動作は未検証** |
+| GUI | ○ | 未検証 | Linux は CI のビルドのみ |
 
 ○ 実装済み ／ △ 実装済みだが制約あり ／ × 未実装
+
+#### 実データで確認したこと（Windows）
+
+実際の `~/Downloads`（6,892 ファイル / 6.5 GB）で通しています。
+
+- 初回の `fo scan` が **1.1 秒**、再スキャンが 0.34 秒。DB は 4.2 MB
+- 移動・リネームしたファイルを同一と判定し、入手元が追従する
+- コピーを `derived_from` で親に紐づけ、`fo show` が親の入手元を「継承」として見せる
+- デーモンが動いている間の作成・移動・消失をログに記録する
+- ブラウザ拡張の報告を模した JSON をホスト経由で送り、`browser_ext` / `certain` で記録される
+
+#### 分かっている限界
+
+- **入手元 6,673 件のうち 6,557 件（98%）が `file://`**、つまり書庫から展開したファイルの
+  展開元パスです。web 由来は 116 件でした。しかも調査時点で**展開元の書庫 22 個はすべて削除済み**。
+  後追いのスキャンでは、書庫が消えた時点で来歴の鎖が切れます。常駐監視の価値はここにあります
+- `fo scan ~/Downloads` の件数は「ダウンロード数」ではありません。展開された中身が件数を大きく膨らませます
+- **ブラウザ拡張をブラウザに読み込んでの実動作は未検証**です。ホスト側はブラウザと同じ
+  フレーム形式（4 バイト長前置 JSON）で検証済みですが、拡張自体は動かしていません
+
+#### 使ってみる
+
+```bash
+fo doctor                      # この環境で何が使えるか
+fo scan                        # 既定のダウンロードフォルダを取り込む
+fo search --sort acquired      # 取得日時の新しい順に見る
+fo-daemon                      # 常駐させる（窓は出ません）
+fo daemon status               # 動いているか、ログはどこか
+```
+
+ブラウザからの自動記録まで繋ぐには、さらに次が要ります。
+
+```bash
+# 1. chrome://extensions で extension/chrome を読み込み、拡張 ID を控える
+# 2. その ID で Native Messaging ホストを登録する
+fo host install --browser chrome --extension-id <ID>
+fo host status                 # 登録状況
+# 3. fo-daemon を起動しておく
+```
+
 
 ### CI マトリクス
 
@@ -919,6 +1009,11 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 | D9 | GVFS メタデータ読み取り | **読む。ただし既定 OFF のオプトイン。** プライベートブラウジングの記録を含むため（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） | ○ 決定 |
 | D10 | WhereFrom との関係 | **差分の明示に留める。** 相手は Windows 専用・CLI のみ・ごく初期段階でスコープが異なり、現時点で協調する対象が無い。Zone.Identifier のパース実装は参考にし、その際はクレジットする | ○ 決定 |
 | D11 | ユースケース層の置き場所 | **`fo-app` クレートを新設。** 当初案の `fo-core::usecase` は、`fo-store → fo-core` の依存があるため `fo-core` からストアを呼べず成立しない。両方の上に載る別クレートで依存方向を守る | ○ 決定 |
+| D12 | 監視エンジンの置き場所 | **`fo-watcher` クレートは作らず `fo-app::watch` に置く。** やることは「イベントが来たら `ingest_file` を呼ぶ」で `fo-app` と同じ層。別クレートにしても依存グラフは変わらず、ビルド単位が増えるだけ | ○ 決定 |
+| D13 | 非同期ランタイム | **tokio を使わない。** 仕事は「1 本の監視ループ」と「たまに来る接続」だけで、非同期ランタイムを入れても速くならず依存とビルド時間が増える。std スレッドと `Mutex<Store>` で足りる | ○ 決定 |
+| D14 | GUI のフロントエンド構成 | **バンドラを使わず素の HTML/CSS/JS（`gui/web/`）。** この規模ではフレームワークの利得が無く、npm を挟まない分 `cargo build` だけでビルドが完結する。D5（React 暫定）はこれで置き換え。規模が増えたら見直す | ○ 決定 |
+| D15 | GUI の見た目の出所 | **`assets/design-system/` を唯一の出所にする**（決まりは [docs/design-system.md](docs/design-system.md)）。`gui/web/tokens.css` と `components.css` は `scripts/sync-design-system.sh` が作る取り込み物で、手で直さない。素の CSS（`fo-` 接頭辞）なので D14 のバンドラ無し構成にそのまま乗り、React に移っても同じ className が使える | ○ 決定 |
+| D16 | アイコンの持ち方 | **SVG を `data:` URI にして CSS マスクで塗る。** 単色なので `currentColor` に従い、状態色と同じ変数で動く。ファイルが増えず、外部への取得も起きない。代償は CSP に `img-src 'self' data:` が要ること（マスク画像は `img-src` で判定される）。画像として置きたくなったら `assets/design-system/icons/*.svg` を `gui/web/icons/` に出して `--i-<name>` を差し替える | ○ 決定 |
 
 ---
 
@@ -928,11 +1023,11 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
 | **M1** コア + CLI | ○ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `search` / `where` / `stats`<br/>両 OS で CI 通過 | ○ `fo` コマンドが動く |
-| **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
-| **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
-| **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |
-| **M5** GUI | Tauri アプリ、検索・一覧・詳細・メモ | 一般ユーザーが使える |
-| **M6** 配布 | MSI / `.deb` / AppImage、ストア申請、ドキュメント | **v1.0** |
+| **M2** OS メタデータ | △ `Zone.Identifier`（Win）の読み取り、`fo doctor`<br/>**残: GVFS（Linux）、Known Folder / xdg-user-dirs** | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
+| **M3** デーモン + 監視 | ○ `fo-daemon` / `fo-ipc` / `fo-app::watch`、移動追跡、差分スキャン、コンソール窓なしの常駐 | ○ 移動しても追える |
+| **M4** ブラウザ連携 | △ `fo-nativehost`、`fo host install`、拡張（Chrome MV3 / Firefox MV2）<br/>**残: 拡張をブラウザに読み込んでの実動作確認** | **自動記録が成立**<br/>**Linux ではここが必須** |
+| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
+| **M6** 配布 | MSI / `.deb` / AppImage、ログオン時の自動起動、ストア申請 | **v1.0** |
 
 > **M4 がプロダクトの成立点。** M1〜M3 は「手で登録すれば便利なツール」に留まるが、M4 で初めて「意識せずに溜まっていく」という本来の価値が出る。
 >

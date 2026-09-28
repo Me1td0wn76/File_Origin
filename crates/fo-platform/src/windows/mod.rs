@@ -2,6 +2,7 @@
 //!
 //! 対応表は README §7.2 を参照。
 
+mod console;
 mod identity;
 mod ipc;
 mod nativehost;
@@ -61,6 +62,10 @@ impl Platform for WindowsPlatform {
 
     fn host_installer(&self) -> &dyn NativeHostInstaller {
         &self.host_installer
+    }
+
+    fn attach_parent_console(&self) -> bool {
+        console::attach_parent_console()
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {

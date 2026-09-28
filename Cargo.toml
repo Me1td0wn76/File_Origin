@@ -57,6 +57,8 @@ windows-sys = { version = "0.59", features = [
     # Zone.Identifier はシステム ANSI コードページで書かれることがある。
     # MultiByteToWideChar で復号するのに要る。
     "Win32_Globalization",
+    # --foreground のとき、起動元の端末に標準出力を繋ぎ直すのに要る。
+    "Win32_System_Console",
 ] }
 xattr = "1"
 

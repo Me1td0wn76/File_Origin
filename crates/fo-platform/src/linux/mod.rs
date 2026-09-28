@@ -63,6 +63,12 @@ impl Platform for LinuxPlatform {
         &self.host_installer
     }
 
+    fn attach_parent_console(&self) -> bool {
+        // Unix には「コンソールを持たないプロセス」という区別が無く、
+        // 端末から起動されていれば標準出力は最初から繋がっている。
+        true
+    }
+
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
         Ok(Box::new(NotifyWatcher::new()?))
     }

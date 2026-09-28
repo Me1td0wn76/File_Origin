@@ -106,6 +106,12 @@ pub struct DaemonStatus {
     pub files: i64,
     /// 監視が動いているか。`false` なら差分スキャンのみ。
     pub watching: bool,
+    /// ログファイルの場所。
+    ///
+    /// コンソール窓を出さなくなったので、**どこを見れば動きが分かるか**を
+    /// 教える必要がある。古いデーモンは送ってこないので `Option` かつ `default`。
+    #[serde(default)]
+    pub log_path: Option<String>,
 }
 
 /// メッセージを 1 件書く。
