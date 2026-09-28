@@ -758,6 +758,7 @@ fo-daemon [--root <dir>]... [--hash] [--foreground] [--verbose] [--no-initial-sc
 凡例: **○ = 雛型あり** ／ 印なし = 未作成（設計のみ）
 
 ```
+```
 File_Origin/　　
 ├─ Cargo.toml                 ○ workspace（依存はここに集約）　　
 ├─ rust-toolchain.toml        ○　　

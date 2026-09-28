@@ -224,6 +224,15 @@ pub trait Platform: Send + Sync {
     /// Unix は標準出力が最初から繋がっているので何もせず `true` を返す。
     fn attach_parent_console(&self) -> bool;
 
+    /// 実行ファイルを背後で起動する。返すのは子の PID。
+    ///
+    /// 常駐デーモンを CLI や GUI から立ち上げるための口。呼び出し側は待たない。
+    ///
+    /// **コンソール窓を作らず、標準入出力も繋がない。** デーモンは自前の
+    /// ログファイルに書くので、親の出力を借りる必要が無い。
+    /// 親が終了しても子は残る — GUI を閉じたら記録が止まる、では困る。
+    fn spawn_background(&self, exe: &Path, args: &[&str]) -> Result<u32>;
+
     /// 新しい監視器を作る。
     ///
     /// `Platform` から借りるのではなく毎回作るのは、監視器が可変状態を持ち、
@@ -274,6 +283,22 @@ pub fn current() -> Box<dyn Platform> {
              README §7.2 の対応表を更新してください。"
         )
     }
+}
+
+/// 背後で動かす子プロセスの共通設定。
+///
+/// OS ごとの差（窓を出さない・プロセスグループを分ける）は各実装が足す。
+/// 共通部分をここに置くのは、標準入出力の扱いが OS で違うと
+/// 「Linux だけログが端末に漏れる」のような差が生まれるため。
+pub(crate) fn background_command(exe: &Path, args: &[&str]) -> std::process::Command {
+    use std::process::Stdio;
+
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    cmd
 }
 
 /// 環境変数を読み、空文字なら `None` にする。
