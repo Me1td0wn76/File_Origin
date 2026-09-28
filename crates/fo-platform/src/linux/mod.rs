@@ -7,6 +7,7 @@ mod ipc;
 mod nativehost;
 mod origin;
 pub(crate) mod paths;
+mod process;
 
 use crate::ipc::LocalSocket;
 use crate::nativehost::NativeHostInstaller;
@@ -67,6 +68,10 @@ impl Platform for LinuxPlatform {
         // Unix には「コンソールを持たないプロセス」という区別が無く、
         // 端末から起動されていれば標準出力は最初から繋がっている。
         true
+    }
+
+    fn spawn_background(&self, exe: &std::path::Path, args: &[&str]) -> Result<u32> {
+        process::spawn_background(exe, args)
     }
 
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {

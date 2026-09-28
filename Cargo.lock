@@ -956,6 +956,7 @@ name = "fo-app"
 version = "0.0.1"
 dependencies = [
  "fo-core",
+ "fo-ipc",
  "fo-platform",
  "fo-store",
  "thiserror 1.0.69",

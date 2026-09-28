@@ -168,6 +168,8 @@ enum DaemonAction {
     Status,
     /// 生存確認
     Ping,
+    /// 背後で起動する（既に動いていれば何もしない）
+    Start,
     /// 停止を要求する
     Stop,
     /// 生の JSON メッセージを 1 件送る（拡張やホストの動作確認用）
@@ -288,6 +290,7 @@ fn run() -> Result<()> {
         Command::Daemon { action } => match action {
             DaemonAction::Status => daemon::status(platform.as_ref())?,
             DaemonAction::Ping => daemon::ping(platform.as_ref())?,
+            DaemonAction::Start => daemon::start(platform.as_ref())?,
             DaemonAction::Stop => daemon::stop(platform.as_ref())?,
             DaemonAction::Send { json } => daemon::send_raw(platform.as_ref(), &json)?,
         },

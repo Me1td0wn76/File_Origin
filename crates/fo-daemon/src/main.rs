@@ -198,8 +198,22 @@ fn main() -> Result<()> {
     });
 
     // 起動時の差分スキャン。停止中の変更を拾う唯一の手段（ADR-0005）。
+    //
+    // **受け付けを止めないよう別スレッドで回す。** ここで待つと、その間 `serve` が
+    // 始まらず、`Ping` も返らない。GUI からは「起動ボタンを押したのに動かない」
+    // に見える（Issue #2）。数千ファイルあると数秒かかるので無視できない。
+    //
+    // スキャンが失敗しても起動は続ける。監視は動くので、記録が
+    // 止まるよりは「停止中の変更を取りこぼした」ほうがまし。理由はログに残す。
     if !cli.no_initial_scan {
-        initial_scan(&daemon)?;
+        let d = Arc::clone(&daemon);
+        std::thread::Builder::new()
+            .name("fo-initial-scan".into())
+            .spawn(move || {
+                if let Err(e) = initial_scan(&d) {
+                    d.log.log(&format!("[警告] 起動時スキャンに失敗: {e}"));
+                }
+            })?;
     }
 
     let watcher_handle = {

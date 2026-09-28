@@ -243,13 +243,8 @@ fn status(state: State<'_, App>) -> Result<StatusDto, String> {
     let paths = state.platform.paths();
 
     // デーモンが居るかは ping で確かめる。居なくても GUI は動く。
-    let daemon_running = state
-        .platform
-        .ipc()
-        .connect()
-        .ok()
-        .and_then(|mut s| fo_ipc::round_trip(&mut s, &fo_ipc::Request::Ping).ok())
-        .is_some();
+    // 判定は `fo-app` に任せる。CLI の `fo daemon status` と同じ定義を使う。
+    let daemon_running = fo_app::daemon::is_running(state.platform.as_ref());
 
     Ok(StatusDto {
         files: store.count_files().map_err(|e| e.to_string())?,
@@ -264,6 +259,37 @@ fn status(state: State<'_, App>) -> Result<StatusDto, String> {
             .collect(),
         advice: caps.advice.iter().map(|s| s.to_string()).collect(),
     })
+}
+
+/// デーモンを起動する。
+///
+/// 起動そのものは `fo-app` に任せる。CLI の `fo daemon start` と同じ経路を通す
+/// （設計方針 P2）。ここに書くと、GUI から起こしたときだけ挙動が違う、が起きる。
+///
+/// `(async)` を付けているのは、応答を待つあいだ画面を固めないため。
+/// Tauri の同期コマンドはメインスレッドで動く。
+#[tauri::command(async)]
+fn daemon_start(state: State<'_, App>) -> Result<String, String> {
+    match fo_app::daemon::start(state.platform.as_ref()) {
+        // 既に動いていたのはエラーにしない。押した人にとって結果は同じ。
+        Ok(true) => Ok("デーモンを起動しました。".into()),
+        Ok(false) => Ok("デーモンはすでに動いています。".into()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// デーモンを止める。
+#[tauri::command(async)]
+fn daemon_stop(state: State<'_, App>) -> Result<String, String> {
+    let platform = state.platform.as_ref();
+    if !fo_app::daemon::is_running(platform) {
+        return Ok("デーモンは動いていません。".into());
+    }
+    match fo_app::daemon::stop(platform) {
+        Ok(true) => Ok("デーモンを停止しました。".into()),
+        Ok(false) => Ok("停止を要求しましたが、まだ終了していません。".into()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// 並べ替えに使える項目の一覧。
@@ -383,7 +409,9 @@ fn main() {
             status,
             scan,
             add_origin,
-            sort_options
+            sort_options,
+            daemon_start,
+            daemon_stop
         ])
         .run(tauri::generate_context!())
         .expect("GUI を起動できません");

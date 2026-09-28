@@ -763,7 +763,12 @@ async function openStatus() {
   const body = $("status-body");
   body.replaceChildren(el("div", "fo-muted", "読み込み中…"));
   $("dlg-status").showModal();
+  await renderStatusDialog();
+}
 
+/** 状態ダイアログの中身。起動・停止のたびに作り直す。 */
+async function renderStatusDialog() {
+  const body = $("status-body");
   const s = await refreshStatus();
   if (!s) {
     body.replaceChildren(noticeNode("danger", "状態を取れません"));
@@ -779,9 +784,7 @@ async function openStatus() {
   };
   fact("記録数", `${fmtCount(s.files)} ファイル`);
   fact("プラットフォーム", s.platform);
-  fact("デーモン", s.daemon_running
-    ? markNode("○", "稼働中", "ok")
-    : markNode("×", "停止中", "danger"));
+  fact("デーモン", daemonControl(s.daemon_running));
   fact("IPC", s.ipc_endpoint);
   fact("DB", s.db_path);
   if (s.download_dirs.length) {
@@ -793,9 +796,35 @@ async function openStatus() {
   body.replaceChildren(dl);
   if (!s.daemon_running) {
     body.appendChild(noticeNode(null, "自動記録は止まっています",
-      "fo-daemon を起動すると、ダウンロードの記録とファイル移動の追従が有効になります。"));
+      "デーモンを起動すると、ダウンロードの記録とファイル移動の追従が有効になります。"));
   }
   for (const a of s.advice) body.appendChild(noticeNode("warn", a));
+}
+
+/** 状態と、それを裏返すボタン。 */
+function daemonControl(running) {
+  const wrap = el("span");
+  wrap.appendChild(running
+    ? markNode("○", "稼働中", "ok")
+    : markNode("×", "停止中", "danger"));
+  wrap.appendChild(btn("fo-btn-sm", running ? "停止" : "起動",
+    (e) => toggleDaemon(e.currentTarget, running)));
+  return wrap;
+}
+
+async function toggleDaemon(button, running) {
+  // 起動も停止も、応答を見届けるまで数秒かかることがある。
+  // 押せたままだと二度押しされるので、その場で反応を返す。
+  button.disabled = true;
+  button.textContent = running ? "停止しています…" : "起動しています…";
+  try {
+    toast(await invoke(running ? "daemon_stop" : "daemon_start"), "ok");
+  } catch (e) {
+    toast(String(e), "danger");
+  }
+  // 結果がどうであれ、今の状態を取り直して出す。
+  // 「起動しました」と言いながら表示が停止中のまま、を避ける。
+  await renderStatusDialog();
 }
 
 $("btn-scan").addEventListener("click", openScan);

@@ -383,6 +383,10 @@ pub trait Platform: Send + Sync {
     /// （コンソールを持たないプロセスが `--foreground` で出力するために要る）
     fn attach_parent_console(&self) -> bool;
 
+    /// 実行ファイルを背後で起動する。**窓を作らず、親が終了しても子は残る**
+    /// （GUI や CLI からデーモンを立ち上げるために要る）
+    fn spawn_background(&self, exe: &Path, args: &[&str]) -> Result<u32>;
+
     /// 実行環境の実力を診断する（`fo doctor` が表示する）
     fn capabilities(&self) -> Capabilities;
 
@@ -727,7 +731,8 @@ fo stats                                   ○ 記録の統計
 
 # 環境と常駐
 fo doctor                                  ○ 実行環境の能力診断（§7.3）
-fo daemon status|ping|stop                 ○ 常駐サービスの状態
+fo daemon status|ping                      ○ 常駐サービスの状態
+fo daemon start|stop                       ○ 常駐サービスの起動・停止（GUI と同じ経路）
 fo daemon send '<json>'                    ○ 生のプロトコルを 1 件送る（拡張の切り分け用）
 fo host install --browser chrome --extension-id <ID>   ○ Native Messaging の登録
 fo host status|uninstall                   ○
@@ -758,79 +763,68 @@ fo-daemon [--root <dir>]... [--hash] [--foreground] [--verbose] [--no-initial-sc
 凡例: **○ = 雛型あり** ／ 印なし = 未作成（設計のみ）
 
 ```
-File_Origin/
-├─ Cargo.toml                 ○ workspace（依存はここに集約）
-├─ rust-toolchain.toml        ○
-├─ crates/
-│  ├─ fo-core/                ○ ドメイン（OS 非依存）
-│  │  └─ src/{model,identity,hash}.rs
-│  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ
-│  │  └─ src/
-│  │     ├─ lib.rs            ○ trait 定義・型・current()
-│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）
-│  │     ├─ watcher.rs        ○ ファイル監視（notify）
-│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト
-│  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys
-│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs
-│  │     │     ＋ 今後: {usn,autostart}.rs
-│  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr
-│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs
-│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs
-│  │     └─ mock/             ○ テスト用のインメモリ実装
-│  ├─ fo-store/               ○ SQLite + マイグレーション
-│  │  └─ migrations/{0001_init,0002_path_name}.sql
-│  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）
-│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs
-│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル
-│  ├─ fo-cli/                 ○ CLI (bin `fo`)
-│  ├─ fo-daemon/              ○ 常駐サービス (bin)
-│  │  └─ src/{main,logging}.rs
-│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)
-├─ gui/                       ○ デスクトップ GUI
-│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)
-│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）
-│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）
-│     ├─ components.css       ○ fo- 接頭辞の部品（同上）
-│     ├─ app.css              ○ この画面の組み立てだけ
-│     ├─ app.js               ○ 検索・詳細・取り込み
-│     └─ index.html
-├─ assets/                    ○ 見た目の原本（ここを直してから配る）
-│  ├─ banner/                 ○ README・GitHub 用のバナー
-│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）
-│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個
-├─ extension/                 ○ ブラウザ拡張
-│  ├─ shared/                 ○ 共通ロジック
-│  ├─ chrome/                 ○ MV3
-│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）
-├─ packaging/                    インストーラ (M6)
-│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録
-│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit
-├─ scripts/
-│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
-│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む
-├─ docs/
-│  ├─ adr/                    ○ Architecture Decision Records
-│  ├─ design-system.md        ○ GUI の見た目の決まり
-│  ├─ brand.md                ○ アイコンとバナーの使い方
-│  └─ prior-art.md            ○ 既存 OSS・製品の調査結果
-├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill
-│  ├─ platform-layer/            OS 固有機能を追加するとき
-│  ├─ origin-source/             入手元の取得経路を追加するとき
-│  └─ new-crate/                 workspace にクレートを足すとき
-└─ .github/workflows/ci.yml   ○ CI（Linux）
 ```
-
-### `.claude/skills/` について
-
-[Claude Code](https://claude.com/claude-code) でこのリポジトリを触るとき、設計の不変条件を守らせるための手順書。人間が読んでも設計判断の理由が分かるように書いてある。
-
-| skill | 使うとき | 守らせるもの |
-| --- | --- | --- |
-| `platform-layer` | Windows / Linux の差が絡む機能を足すとき | 設計方針 P1（OS 差は 1 層に閉じ込める）。trait 設計・モック・README 対応表の更新まで |
-| `origin-source` | 新しい入手元の取得経路を足すとき | 設計方針 P5（出所と確度を明示）。DB・`fo doctor`・プライバシー既定まで |
-| `new-crate` | workspace にクレートを足すとき | レイヤーの依存方向（上位 → 下位の一方向） |
-
-Claude Code を使わない場合は、これらを **コントリビューションガイドとして読めばよい**。
+File_Origin/　　
+├─ Cargo.toml                 ○ workspace（依存はここに集約）　　
+├─ rust-toolchain.toml        ○　　
+├─ crates/　　
+│  ├─ fo-core/                ○ ドメイン（OS 非依存）　　
+│  │  └─ src/{model,identity,hash}.rs　　
+│  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ　　
+│  │  └─ src/　　
+│  │     ├─ lib.rs            ○ trait 定義・型・current()　　
+│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）　　
+│  │     ├─ watcher.rs        ○ ファイル監視（notify）　　
+│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト　　
+│  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,console,process}.rs　　
+│  │     │     ＋ 今後: {usn,autostart}.rs　　
+│  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,process}.rs　　
+│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs　　
+│  │     └─ mock/             ○ テスト用のインメモリ実装　　
+│  ├─ fo-store/               ○ SQLite + マイグレーション　　
+│  │  └─ migrations/{0001_init,0002_path_name}.sql　　
+│  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）　　
+│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser,daemon}.rs　　
+│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル　　
+│  ├─ fo-cli/                 ○ CLI (bin `fo`)　　
+│  ├─ fo-daemon/              ○ 常駐サービス (bin)　　
+│  │  └─ src/{main,logging}.rs　　
+│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)　　
+├─ gui/                       ○ デスクトップ GUI　　
+│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)　　
+│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）　　
+│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）　　
+│     ├─ components.css       ○ fo- 接頭辞の部品（同上）　　
+│     ├─ app.css              ○ この画面の組み立てだけ　　
+│     ├─ app.js               ○ 検索・詳細・取り込み　　
+│     └─ index.html　　
+├─ assets/                    ○ 見た目の原本（ここを直してから配る）　　
+│  ├─ banner/                 ○ README・GitHub 用のバナー　　
+│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）　　
+│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個　　
+├─ extension/                 ○ ブラウザ拡張　　
+│  ├─ shared/                 ○ 共通ロジック　　
+│  ├─ chrome/                 ○ MV3　　
+│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）　　
+├─ packaging/                    インストーラ (M6)　　
+│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録　　
+│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit　　
+├─ scripts/　　
+│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）　　
+│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む　　
+├─ docs/　　
+│  ├─ adr/                    ○ Architecture Decision Records　　
+│  ├─ design-system.md        ○ GUI の見た目の決まり　　
+│  ├─ brand.md                ○ アイコンとバナーの使い方　　
+│  └─ prior-art.md            ○ 既存 OSS・製品の調査結果　　
+├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill　　
+│  ├─ platform-layer/            OS 固有機能を追加するとき　　
+│  ├─ origin-source/             入手元の取得経路を追加するとき　　
+│  └─ new-crate/                 workspace にクレートを足すとき　　
+└─ .github/workflows/ci.yml   ○ CI（Linux）　　
+```
 
 ### 主要な依存クレート（想定）
 
@@ -908,6 +902,7 @@ GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 | ファイル監視 | ○ | ○ | `notify` 経由。静穏時間つき |
 | 変更ジャーナル | × | × | 任意の高速化。既定の差分スキャンで代替（[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
 | IPC / デーモン | ○ 名前付きパイプ | ○ Unix ソケット | コンソール窓なしで常駐 |
+| デーモンの起動・停止 | ○ | ○ | CLI（`fo daemon start`\|`stop`）と GUI の「状態」から。同じ経路 |
 | Native Messaging | ○ | ○ | ホストとマニフェスト設置。**拡張の実動作は未検証** |
 | GUI | ○ | 未検証 | Linux は CI のビルドのみ |
 
@@ -938,8 +933,9 @@ GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 fo doctor                      # この環境で何が使えるか
 fo scan                        # 既定のダウンロードフォルダを取り込む
 fo search --sort acquired      # 取得日時の新しい順に見る
-fo-daemon                      # 常駐させる（窓は出ません）
+fo daemon start                # 常駐させる（窓は出ません）
 fo daemon status               # 動いているか、ログはどこか
+fo daemon stop                 # 止める
 ```
 
 ブラウザからの自動記録まで繋ぐには、さらに次が要ります。
@@ -949,7 +945,7 @@ fo daemon status               # 動いているか、ログはどこか
 # 2. その ID で Native Messaging ホストを登録する
 fo host install --browser chrome --extension-id <ID>
 fo host status                 # 登録状況
-# 3. fo-daemon を起動しておく
+# 3. デーモンを起動しておく（`fo daemon start`、または GUI の「状態」から）
 ```
 
 
@@ -1030,7 +1026,7 @@ fo host status                 # 登録状況
 | **M2** OS メタデータ | △ `Zone.Identifier`（Win）の読み取り、`fo doctor`<br/>**残: GVFS（Linux）、Known Folder / xdg-user-dirs** | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
 | **M3** デーモン + 監視 | ○ `fo-daemon` / `fo-ipc` / `fo-app::watch`、移動追跡、差分スキャン、コンソール窓なしの常駐 | ○ 移動しても追える |
 | **M4** ブラウザ連携 | △ `fo-nativehost`、`fo host install`、拡張（Chrome MV3 / Firefox MV2）<br/>**残: 拡張をブラウザに読み込んでの実動作確認** | **自動記録が成立**<br/>**Linux ではここが必須** |
-| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
+| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み・デーモンの起動と停止<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
 | **M6** 配布 | MSI / `.deb` / AppImage、ログオン時の自動起動、ストア申請 | **v1.0** |
 
 > **M4 がプロダクトの成立点。** M1〜M3 は「手で登録すれば便利なツール」に留まるが、M4 で初めて「意識せずに溜まっていく」という本来の価値が出る。
@@ -1045,5 +1041,4 @@ fo host status                 # 登録状況
 
 Rust 界隈で慣習的な `MIT OR Apache-2.0` ではなく MIT 単独を選択。利用者にとって最も明快で、ブラウザ拡張側のコードとも揃えやすいため。
 
-> 注: `LICENSE` の著作権表記は現在 `Copyright (c) 2026 File Origin contributors` になっている。
-> 個人名や GitHub ハンドルにしたい場合はこの行を書き換えること。
+

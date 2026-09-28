@@ -233,6 +233,12 @@ impl Platform for MockPlatform {
         true
     }
 
+    fn spawn_background(&self, _exe: &Path, _args: &[&str]) -> Result<u32> {
+        // モックが本物のプロセスを起こすと、誰が後始末をするのか分からなくなる。
+        // テストの中でデーモンが動き出すのは事故なので、起こさないと明言する。
+        Err(Error::Unsupported("プロセスの起動"))
+    }
+
     fn new_watcher(&self) -> Result<Box<dyn FsWatcher>> {
         Ok(Box::new(NotifyWatcher::new()?))
     }
