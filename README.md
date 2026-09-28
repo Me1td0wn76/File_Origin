@@ -777,16 +777,16 @@ File_Origin/　　
 │  │     ├─ watcher.rs        ○ ファイル監視（notify）　　
 │  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト　　
 │  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys　　
-│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,console,process}.rs　　
 │  │     │     ＋ 今後: {usn,autostart}.rs　　
 │  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr　　
-│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,process}.rs　　
 │  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs　　
 │  │     └─ mock/             ○ テスト用のインメモリ実装　　
 │  ├─ fo-store/               ○ SQLite + マイグレーション　　
 │  │  └─ migrations/{0001_init,0002_path_name}.sql　　
 │  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）　　
-│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs　　
+│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser,daemon}.rs　　
 │  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル　　
 │  ├─ fo-cli/                 ○ CLI (bin `fo`)　　
 │  ├─ fo-daemon/              ○ 常駐サービス (bin)　　
