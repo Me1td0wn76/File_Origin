@@ -236,14 +236,14 @@ fo show ./setup.zip  または  GUI でファイルを選択
                             │ 同一のユースケース API を呼ぶ
 ┌───────────────────────────▼─────────────────────────────────┐
 │  アプリケーション層   fo-app                                  │
-│  ingest / scan / describe / add_manual_origin / …           │
+│  ingest / scan / watch / search / describe / browser / …    │
 └──────────┬────────────────────────────────┬─────────────────┘
            │                                │
 ┌──────────▼──────────────┐  ┌──────────────▼─────────────────┐
 │  ドメイン層 fo-core      │  │  サービス層                     │
-│  FileRecord / Origin    │  │  fo-store   (SQLite)           │
-│  StableFileId / Digest  │  │  fo-watcher (監視エンジン)       │
-│  ※ OS を一切知らない     │  │  fo-ipc     (プロトコル)         │
+│  FileRecord / Origin    │  │  fo-store (SQLite)             │
+│  StableFileId / Digest  │  │  fo-ipc   (デーモンとの通信)     │
+│  ※ OS を一切知らない     │  │                                │
 └──────────┬──────────────┘  └──────────────┬─────────────────┘
            │                                │
 ┌──────────▼────────────────────────────────▼─────────────────┐
@@ -689,7 +689,11 @@ M1 の検索は **`LIKE` と索引** で行う。数万件規模の個人 DB に
 
 ### IPC
 
-- **プロトコル**: JSON-RPC 2.0 over stream（`fo-ipc` に型定義を集約）
+- **プロトコル**: **行区切り JSON**（1 行 1 メッセージ、UTF-8、末尾 `
+`）。`fo-ipc` に型定義を集約
+  - JSON-RPC 2.0 の汎用性は要らない。話す相手が自分たちだけなので、素直な `{"kind": ...}` の方が
+    読みやすく、他言語（ブラウザ拡張）からも実装しやすい
+  - **未知のフィールドは無視する。** 拡張とデーモンの更新は同時にできないため
 - **トランスポート**: `IpcTransport` trait で抽象化
   - Windows: 名前付きパイプ `\\.\pipe\file-origin`
   - Linux: Unix ドメインソケット `$XDG_RUNTIME_DIR/file-origin.sock`
