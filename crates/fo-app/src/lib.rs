@@ -57,8 +57,10 @@ pub enum Error {
     #[error(transparent)]
     Ipc(#[from] fo_ipc::Error),
 
-    #[error("デーモンの実行ファイルが見つかりません: {0}
-fo-daemon を同じ場所に置いてください。")]
+    #[error(
+        "デーモンの実行ファイルが見つかりません: {0}
+fo-daemon を同じ場所に置いてください。"
+    )]
     DaemonNotFound(std::path::PathBuf),
 
     #[error("デーモンを起動しましたが応答がありません。ログを確認してください: {0}")]
