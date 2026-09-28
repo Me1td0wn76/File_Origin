@@ -758,66 +758,66 @@ fo-daemon [--root <dir>]... [--hash] [--foreground] [--verbose] [--no-initial-sc
 凡例: **○ = 雛型あり** ／ 印なし = 未作成（設計のみ）
 
 ```
-File_Origin/
-├─ Cargo.toml                 ○ workspace（依存はここに集約）
-├─ rust-toolchain.toml        ○
-├─ crates/
-│  ├─ fo-core/                ○ ドメイン（OS 非依存）
-│  │  └─ src/{model,identity,hash}.rs
-│  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ
-│  │  └─ src/
-│  │     ├─ lib.rs            ○ trait 定義・型・current()
-│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）
-│  │     ├─ watcher.rs        ○ ファイル監視（notify）
-│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト
-│  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys
-│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs
-│  │     │     ＋ 今後: {usn,autostart}.rs
-│  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr
-│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs
-│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs
-│  │     └─ mock/             ○ テスト用のインメモリ実装
-│  ├─ fo-store/               ○ SQLite + マイグレーション
-│  │  └─ migrations/{0001_init,0002_path_name}.sql
-│  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）
-│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs
-│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル
-│  ├─ fo-cli/                 ○ CLI (bin `fo`)
-│  ├─ fo-daemon/              ○ 常駐サービス (bin)
-│  │  └─ src/{main,logging}.rs
-│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)
-├─ gui/                       ○ デスクトップ GUI
-│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)
-│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）
-│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）
-│     ├─ components.css       ○ fo- 接頭辞の部品（同上）
-│     ├─ app.css              ○ この画面の組み立てだけ
-│     ├─ app.js               ○ 検索・詳細・取り込み
-│     └─ index.html
-├─ assets/                    ○ 見た目の原本（ここを直してから配る）
-│  ├─ banner/                 ○ README・GitHub 用のバナー
-│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）
-│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個
-├─ extension/                 ○ ブラウザ拡張
-│  ├─ shared/                 ○ 共通ロジック
-│  ├─ chrome/                 ○ MV3
-│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）
-├─ packaging/                    インストーラ (M6)
-│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録
-│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit
-├─ scripts/
-│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
-│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む
-├─ docs/
-│  ├─ adr/                    ○ Architecture Decision Records
-│  ├─ design-system.md        ○ GUI の見た目の決まり
-│  ├─ brand.md                ○ アイコンとバナーの使い方
-│  └─ prior-art.md            ○ 既存 OSS・製品の調査結果
-├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill
-│  ├─ platform-layer/            OS 固有機能を追加するとき
-│  ├─ origin-source/             入手元の取得経路を追加するとき
-│  └─ new-crate/                 workspace にクレートを足すとき
-└─ .github/workflows/ci.yml   ○ CI（Linux）
+File_Origin/　　
+├─ Cargo.toml                 ○ workspace（依存はここに集約）　　
+├─ rust-toolchain.toml        ○　　
+├─ crates/　　
+│  ├─ fo-core/                ○ ドメイン（OS 非依存）　　
+│  │  └─ src/{model,identity,hash}.rs　　
+│  ├─ fo-platform/            ○ ★ OS 抽象化層 — cfg はここだけ　　
+│  │  └─ src/　　
+│  │     ├─ lib.rs            ○ trait 定義・型・current()　　
+│  │     ├─ ipc.rs            ○ ローカル IPC（interprocess）　　
+│  │     ├─ watcher.rs        ○ ファイル監視（notify）　　
+│  │     ├─ nativehost.rs     ○ Native Messaging のマニフェスト　　
+│  │     ├─ windows/          ○ #[cfg(windows)]  windows-sys　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost,console}.rs　　
+│  │     │     ＋ 今後: {usn,autostart}.rs　　
+│  │     ├─ linux/            ○ #[cfg(target_os = "linux")]  xattr　　
+│  │     │  └─ {identity,origin,paths,ipc,nativehost}.rs　　
+│  │     │     ＋ 今後: {gvfs,fanotify,autostart}.rs　　
+│  │     └─ mock/             ○ テスト用のインメモリ実装　　
+│  ├─ fo-store/               ○ SQLite + マイグレーション　　
+│  │  └─ migrations/{0001_init,0002_path_name}.sql　　
+│  ├─ fo-app/                 ○ ユースケース層（CLI / GUI 共通）　　
+│  │  └─ src/{ingest,scan,watch,describe,search,manual,browser}.rs　　
+│  ├─ fo-ipc/                 ○ デーモンとの通信プロトコル　　
+│  ├─ fo-cli/                 ○ CLI (bin `fo`)　　
+│  ├─ fo-daemon/              ○ 常駐サービス (bin)　　
+│  │  └─ src/{main,logging}.rs　　
+│  └─ fo-nativehost/          ○ Native Messaging ホスト (bin)　　
+├─ gui/                       ○ デスクトップ GUI　　
+│  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)　　
+│  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）　　
+│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）　　
+│     ├─ components.css       ○ fo- 接頭辞の部品（同上）　　
+│     ├─ app.css              ○ この画面の組み立てだけ　　
+│     ├─ app.js               ○ 検索・詳細・取り込み　　
+│     └─ index.html　　
+├─ assets/                    ○ 見た目の原本（ここを直してから配る）　　
+│  ├─ banner/                 ○ README・GitHub 用のバナー　　
+│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）　　
+│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個　　
+├─ extension/                 ○ ブラウザ拡張　　
+│  ├─ shared/                 ○ 共通ロジック　　
+│  ├─ chrome/                 ○ MV3　　
+│  └─ firefox/                ○ MV2（Firefox の MV3 は Service Worker 非対応）　　
+├─ packaging/                    インストーラ (M6)　　
+│  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録　　
+│  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit　　
+├─ scripts/　　
+│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）　　
+│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む　　
+├─ docs/　　
+│  ├─ adr/                    ○ Architecture Decision Records　　
+│  ├─ design-system.md        ○ GUI の見た目の決まり　　
+│  ├─ brand.md                ○ アイコンとバナーの使い方　　
+│  └─ prior-art.md            ○ 既存 OSS・製品の調査結果　　
+├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill　　
+│  ├─ platform-layer/            OS 固有機能を追加するとき　　
+│  ├─ origin-source/             入手元の取得経路を追加するとき　　
+│  └─ new-crate/                 workspace にクレートを足すとき　　
+└─ .github/workflows/ci.yml   ○ CI（Linux）　　
 ```
 
 ### `.claude/skills/` について
