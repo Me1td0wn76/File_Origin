@@ -9,13 +9,17 @@
 - **ブラウザ連携** — Chrome / Firefox 拡張＋Native Messaging
 - **移動・リネーム追跡** — ファイルが動いても追い続ける
 
-> **Status: M1 実装中 — Windows / Linux 両方で CI が通っている**
+> **Status: M5 まで通し動作 — CLI・常駐デーモン・ブラウザ連携・GUI が動く**
 > 本 README はアーキテクチャ設計文書を兼ねます。
 > - 設計判断とその理由: [docs/adr/](docs/adr/)・[未決事項](#15-未決事項decision-log)
 > - 既存 OSS・製品の調査: [docs/prior-art.md](docs/prior-art.md)（完了）
 > - 何がどこまで動くか: [現在の実装状況](#現在の実装状況)
 >
-> Windows 11 / Rust 1.98 (GNU) で `cargo test` 28 件パス、`fo scan` → 移動 → 再 scan で入手元の追従を確認済み。CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）で ubuntu-latest / windows-latest の両方がビルド・テスト・clippy・rustfmt・arch-guard を通過。Linux の実機での `fo scan` はまだ。
+> Windows 11 / Rust 1.98 (GNU) で **80 件のテストが通過**。実際の `~/Downloads`（6,892 ファイル / 6.5 GB）で
+> 取り込み・移動追従・検索・GUI 表示まで確認しています。
+> CI（[GitHub Actions](https://github.com/Me1td0wn76/File_Origin/actions)）は ubuntu-latest / windows-latest の
+> 両方でビルド・テスト・clippy・rustfmt・arch-guard を通過。
+> **Linux は CI でのビルドとテストまで。実機での動作確認はまだです。**
 
 ---
 
@@ -266,12 +270,16 @@ fo show ./setup.zip  または  GUI でファイルを選択
 | `fo-core` | lib | ドメインモデル・ユースケース | × なし |
 | `fo-platform` | lib | **OS 抽象化 trait とその実装** | ○ **ここだけ** |
 | `fo-store` | lib | SQLite 永続化・マイグレーション | × なし |
-| `fo-app` | lib | **ユースケース。CLI と GUI が共有する** | × なし |
-| `fo-watcher` | lib | 監視・スキャン・同一性解決のエンジン | ×（`fo-platform` 経由） |
-| `fo-ipc` | lib | IPC のメッセージ定義とクライアント / サーバ | ×（`fo-platform` 経由） |
-| `fo-daemon` | bin | 常駐サービス本体 | × |
-| `fo-cli` | bin | コマンドラインインターフェース | × |
-| `fo-nativehost` | bin | Native Messaging ホスト | × |
+| `fo-app` | lib | **ユースケース。CLI と GUI が共有する**（取り込み・走査・監視・検索・来歴） | × なし |
+| `fo-ipc` | lib | デーモンとの通信プロトコル（行区切り JSON） | × なし |
+| `fo-daemon` | bin | 常駐サービス。監視と IPC サーバ | × |
+| `fo-cli` | bin | コマンドラインインターフェース（`fo`） | × |
+| `fo-nativehost` | bin | Native Messaging ホスト。拡張 ↔ デーモンの中継 | × |
+| `fo-gui` | bin | デスクトップ GUI（Tauri）。`gui/src-tauri/` | × |
+
+> 当初案にあった `fo-watcher` は作っていません。やることは「イベントが来たら `ingest_file` を呼ぶ」で
+> `fo-app` と同じ層であり、別クレートにしても依存グラフが変わらないためです（D12）。
+> 監視エンジンは `fo-app::watch` にあります。
 
 > **不変条件（CI で機械的に検査する）**
 > `fo-platform` 以外のクレートに `#[cfg(windows)]` / `#[cfg(target_os = "linux")]` / `windows-rs` / `nix` が現れたら **ビルドを落とす**。
@@ -832,36 +840,66 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 
 ### 現在の実装状況
 
-**`fo doctor` / `fo scan` / `fo show` / `fo add` / `fo stats` が動く。** Windows で以下を確認済み:
-
-- `fo scan --hash` で Zone.Identifier から入手元を取得
-- ファイルを **移動＋リネーム** → 再 scan で同一ファイルと認識し、入手元が追従（はしご 1 段目）
-- ファイルを **コピー** → 再 scan でコピーと判定し `derived_from` が付く（はしご 3 段目）
-- 何も変えずに再 scan → 変更なし
-- パス履歴が `file_paths` に残る（旧パスは `is_current = 0`）
-- `fo show` がパス履歴・コピー元・コピー元から継承した入手元を表示する
-- `fo add --url` で手動登録。未記録のファイルは同時に取り込む。Zone.Identifier の記録とは別行で積まれる
-- `fo search` が名前（過去の名前含む）・URL・ホスト・日付範囲で引ける。`fo where` はファイル名か SHA-256 から現在地を返す
-- 0001 で作った DB を開くと 0002（`name` 列）が自動適用され、既存行が埋め戻される
-
-**Linux は CI（ubuntu-latest）でビルド・テスト・`fo doctor` まで確認済み。** 実ファイルでの `fo scan` はまだ誰も回していない。
+CLI（`fo`）・常駐デーモン（`fo-daemon`）・Native Messaging ホスト（`fo-nativehost`）・
+GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 
 | 領域 | Windows | Linux | 備考 |
 | --- | :---: | :---: | --- |
 | 安定識別子 | ○ | ○ | Win: `FILE_ID_INFO` (FFI) / Linux: `statx` |
-| 識別子→パス逆引き | × | × | Win は M3 で実装予定。Linux は OS に存在しない |
-| 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は M2（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
+| 識別子→パス逆引き | × | × | Win は `OpenFileById` で可能だが未実装。Linux は OS に存在しない |
+| 入手元メタデータ | ○ Zone.Identifier | △ xattr のみ | GVFS は未実装（[ADR-0008](docs/adr/0008-gvfs-opt-in.md)） |
 | データ配置先 | ○ | ○ | `%LOCALAPPDATA%` / XDG |
-| SQLite スキーマ | ○ | ○ | マイグレーション込み |
+| SQLite スキーマ | ○ | ○ | マイグレーション 0001・0002 |
 | 同一性判定のはしご | ○ | ○ | 純粋関数・テスト済み |
 | SHA-256 | ○ | ○ | 遅延計算（[ADR-0007](docs/adr/0007-hashing-strategy.md)） |
-| ファイル監視 | × | × | M3 |
-| 変更ジャーナル | × | × | M3（任意機能・[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
-| IPC / デーモン | × | × | M3 |
-| ブラウザ拡張 | × | × | M4。**Linux ではこれが必須** |
-| GUI | × | × | M5 |
+| 検索・並べ替え | ○ | ○ | 名前（過去の名前含む）・URL・ホスト・日付・確度 |
+| ファイル監視 | ○ | ○ | `notify` 経由。静穏時間つき |
+| 変更ジャーナル | × | × | 任意の高速化。既定の差分スキャンで代替（[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
+| IPC / デーモン | ○ 名前付きパイプ | ○ Unix ソケット | コンソール窓なしで常駐 |
+| Native Messaging | ○ | ○ | ホストとマニフェスト設置。**拡張の実動作は未検証** |
+| GUI | ○ | 未検証 | Linux は CI のビルドのみ |
 
 ○ 実装済み ／ △ 実装済みだが制約あり ／ × 未実装
+
+#### 実データで確認したこと（Windows）
+
+実際の `~/Downloads`（6,892 ファイル / 6.5 GB）で通しています。
+
+- 初回の `fo scan` が **1.1 秒**、再スキャンが 0.34 秒。DB は 4.2 MB
+- 移動・リネームしたファイルを同一と判定し、入手元が追従する
+- コピーを `derived_from` で親に紐づけ、`fo show` が親の入手元を「継承」として見せる
+- デーモンが動いている間の作成・移動・消失をログに記録する
+- ブラウザ拡張の報告を模した JSON をホスト経由で送り、`browser_ext` / `certain` で記録される
+
+#### 分かっている限界
+
+- **入手元 6,673 件のうち 6,557 件（98%）が `file://`**、つまり書庫から展開したファイルの
+  展開元パスです。web 由来は 116 件でした。しかも調査時点で**展開元の書庫 22 個はすべて削除済み**。
+  後追いのスキャンでは、書庫が消えた時点で来歴の鎖が切れます。常駐監視の価値はここにあります
+- `fo scan ~/Downloads` の件数は「ダウンロード数」ではありません。展開された中身が件数を大きく膨らませます
+- **ブラウザ拡張をブラウザに読み込んでの実動作は未検証**です。ホスト側はブラウザと同じ
+  フレーム形式（4 バイト長前置 JSON）で検証済みですが、拡張自体は動かしていません
+
+#### 使ってみる
+
+```bash
+fo doctor                      # この環境で何が使えるか
+fo scan                        # 既定のダウンロードフォルダを取り込む
+fo search --sort acquired      # 取得日時の新しい順に見る
+fo-daemon                      # 常駐させる（窓は出ません）
+fo daemon status               # 動いているか、ログはどこか
+```
+
+ブラウザからの自動記録まで繋ぐには、さらに次が要ります。
+
+```bash
+# 1. chrome://extensions で extension/chrome を読み込み、拡張 ID を控える
+# 2. その ID で Native Messaging ホストを登録する
+fo host install --browser chrome --extension-id <ID>
+fo host status                 # 登録状況
+# 3. fo-daemon を起動しておく
+```
+
 
 ### CI マトリクス
 
@@ -928,11 +966,11 @@ $env:PATH = "$HOME\scoop\apps\rust-gnu\current\bin;$env:PATH"   # PowerShell
 | --- | --- | --- |
 | **M0** 設計・調査 | ○ 本 README の確定、既存 OSS 調査（D2）、ライセンス決定（D1 = MIT） | ○ [`docs/prior-art.md`](docs/prior-art.md)、[`LICENSE`](LICENSE) |
 | **M1** コア + CLI | ○ `fo-core` / `fo-store` / `fo-app` / `fo-platform`（identity・origin・paths）<br/>`fo doctor` / `scan` / `show` / `add` / `search` / `where` / `stats`<br/>両 OS で CI 通過 | ○ `fo` コマンドが動く |
-| **M2** OS メタデータ | `Zone.Identifier`（Win）/ xattr・GVFS（Linux）の読み取り、`fo doctor` | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
-| **M3** デーモン + 監視 | `fo-daemon` / `fo-watcher` / `fo-ipc`、移動追跡、差分スキャン<br/>（USN / fanotify は任意の高速化として後追い） | 移動しても追える |
-| **M4** ブラウザ連携 | 拡張機能（Chrome / Firefox）、`fo-nativehost` | **自動記録が成立**<br/>**Linux ではここが必須** |
-| **M5** GUI | Tauri アプリ、検索・一覧・詳細・メモ | 一般ユーザーが使える |
-| **M6** 配布 | MSI / `.deb` / AppImage、ストア申請、ドキュメント | **v1.0** |
+| **M2** OS メタデータ | △ `Zone.Identifier`（Win）の読み取り、`fo doctor`<br/>**残: GVFS（Linux）、Known Folder / xdg-user-dirs** | **Windows** は既存ファイルを一括救済<br/>Linux は限定的（[§9](#9-入手元の取得経路)） |
+| **M3** デーモン + 監視 | ○ `fo-daemon` / `fo-ipc` / `fo-app::watch`、移動追跡、差分スキャン、コンソール窓なしの常駐 | ○ 移動しても追える |
+| **M4** ブラウザ連携 | △ `fo-nativehost`、`fo host install`、拡張（Chrome MV3 / Firefox MV2）<br/>**残: 拡張をブラウザに読み込んでの実動作確認** | **自動記録が成立**<br/>**Linux ではここが必須** |
+| **M5** GUI | △ Tauri アプリ、検索・並べ替え・一覧・詳細・取り込み<br/>**残: 手動登録 UI（[#5](https://github.com/Me1td0wn76/File_Origin/issues/5)）、プレビュー（[#6](https://github.com/Me1td0wn76/File_Origin/issues/6)）** | 一般ユーザーが使える |
+| **M6** 配布 | MSI / `.deb` / AppImage、ログオン時の自動起動、ストア申請 | **v1.0** |
 
 > **M4 がプロダクトの成立点。** M1〜M3 は「手で登録すれば便利なツール」に留まるが、M4 で初めて「意識せずに溜まっていく」という本来の価値が出る。
 >
