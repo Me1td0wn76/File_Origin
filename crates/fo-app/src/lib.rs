@@ -13,6 +13,7 @@
 //! 両方の上に載る別クレートが要る（Decision Log D11）。
 
 pub mod browser;
+pub mod daemon;
 pub mod describe;
 pub mod ingest;
 pub mod manual;
@@ -52,4 +53,14 @@ pub enum Error {
 
     #[error("URL も参照元も無い報告は記録できません")]
     EmptyReport,
+
+    #[error(transparent)]
+    Ipc(#[from] fo_ipc::Error),
+
+    #[error("デーモンの実行ファイルが見つかりません: {0}
+fo-daemon を同じ場所に置いてください。")]
+    DaemonNotFound(std::path::PathBuf),
+
+    #[error("デーモンを起動しましたが応答がありません。ログを確認してください: {0}")]
+    DaemonNoResponse(std::path::PathBuf),
 }
