@@ -4,65 +4,103 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>File Origin</title>
+<!-- 読み込み順に意味がある: 変数 → 部品 → この画面の組み立て。 -->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
-<header class="bar">
-  <div class="brand">File&nbsp;Origin</div>
-  <div class="search">
-    <input id="q" type="search" placeholder="ファイル名で検索（* ? が使えます）" autocomplete="off" spellcheck="false">
-    <input id="qhost" type="search" placeholder="入手元ホスト（例: example.com）" autocomplete="off" spellcheck="false">
-  </div>
-  <div class="spacer"></div>
-  <button id="btn-scan" class="ghost" title="ディレクトリを取り込む">取り込み</button>
-  <button id="btn-status" class="ghost" title="状態">状態</button>
-</header>
+<div class="fo-shell">
 
-<main>
-  <section class="list" aria-label="検索結果">
-    <div class="listbar">
-      <span id="count" class="count">読み込み中…</span>
-      <label class="sort">
-        並び
-        <select id="sort-key"></select>
-      </label>
-      <button id="sort-dir" class="ghost small" title="並び順を反転する" aria-live="polite"></button>
+  <header class="fo-toolbar">
+    <span class="fo-brand">File&nbsp;Origin</span>
+
+    <div class="fo-query" id="query">
+      <span class="fo-i fo-i-search" aria-hidden="true"></span>
+      <span class="fo-query-chips" id="chips"></span>
+      <input id="q" type="search" aria-label="検索"
+             placeholder="名前で検索 — host: url: で絞り込み"
+             autocomplete="off" spellcheck="false">
+      <span class="fo-kbd">Ctrl K</span>
     </div>
-    <ul id="results"></ul>
-  </section>
 
-  <section id="detail" class="detail" aria-label="詳細">
-    <div class="empty">左の一覧からファイルを選ぶと、来歴が表示されます。</div>
-  </section>
-</main>
+    <span class="fo-toolbar-spacer"></span>
 
-<dialog id="dlg-scan">
-  <form method="dialog">
-    <h2>ディレクトリを取り込む</h2>
-    <label>パス
-      <input id="scan-path" type="text" placeholder="例: C:\Users\you\Downloads" spellcheck="false">
+    <button id="btn-scan" type="button" class="fo-btn" title="ディレクトリを取り込む">
+      <span class="fo-i fo-i-import" aria-hidden="true"></span>取り込み
+    </button>
+    <button id="btn-status" type="button" class="fo-btn fo-btn-ghost fo-btn-icon"
+            aria-label="状態と診断" title="状態と診断">
+      <span class="fo-i fo-i-pulse" aria-hidden="true"></span>
+    </button>
+  </header>
+
+  <div class="fo-panes no-side">
+    <div class="fo-pane fo-pane-list">
+      <div class="fo-listbar">
+        <span id="count" class="fo-listbar-count">読み込み中…</span>
+        <span class="fo-select"><select id="sort-key" aria-label="並び"></select></span>
+        <button id="sort-dir" type="button" class="fo-btn fo-btn-ghost fo-btn-sm"
+                title="並び順を反転する" aria-live="polite"></button>
+      </div>
+      <ul id="results" class="fo-rows" role="listbox" aria-label="検索結果"></ul>
+    </div>
+
+    <div class="fo-pane fo-pane-detail" id="detail" aria-label="詳細"></div>
+  </div>
+
+  <footer class="fo-statusbar" id="statusbar"></footer>
+</div>
+
+<dialog id="dlg-scan" class="fo-dialog">
+  <header class="fo-dialog-head">
+    <h2 class="fo-dialog-title">ディレクトリを取り込む</h2>
+    <button type="button" class="fo-btn fo-btn-ghost fo-btn-icon fo-btn-sm"
+            data-close="cancel" aria-label="閉じる">
+      <span class="fo-i fo-i-close fo-i-sm" aria-hidden="true"></span>
+    </button>
+  </header>
+  <div class="fo-dialog-body">
+    <label class="fo-field">
+      <span class="fo-field-label">パス</span>
+      <input id="scan-path" type="text" class="fo-input fo-input-mono" spellcheck="false"
+             placeholder="例: C:\Users\you\Downloads">
     </label>
-    <label class="check">
-      <input id="scan-hash" type="checkbox"> SHA-256 も計算する（大きいファイルでは時間がかかります）
+    <label class="fo-check">
+      <input id="scan-hash" type="checkbox">
+      <span class="fo-check-box" aria-hidden="true"></span>
+      <span class="fo-check-text">SHA-256 も計算する<small>大きいファイルでは時間がかかります</small></span>
     </label>
-    <p class="hint">ファイルは移動もコピーもされません。読み取りだけです。</p>
-    <menu>
-      <button value="cancel" class="ghost">やめる</button>
-      <button id="scan-go" value="go" class="primary">取り込む</button>
-    </menu>
-  </form>
+    <div class="fo-callout">
+      <span class="fo-i fo-i-shield" aria-hidden="true"></span>
+      <div>
+        <p class="fo-callout-title">読み取りだけです</p>
+        <p>ファイルは移動もコピーもされません。中身も送信しません。</p>
+      </div>
+    </div>
+  </div>
+  <footer class="fo-dialog-foot">
+    <button type="button" class="fo-btn" data-close="cancel">やめる</button>
+    <button type="button" id="scan-go" class="fo-btn fo-btn-primary">取り込む</button>
+  </footer>
 </dialog>
 
-<dialog id="dlg-status">
-  <form method="dialog">
-    <h2>状態</h2>
-    <div id="status-body"></div>
-    <menu><button value="ok" class="primary">閉じる</button></menu>
-  </form>
+<dialog id="dlg-status" class="fo-dialog fo-dialog-sm">
+  <header class="fo-dialog-head">
+    <h2 class="fo-dialog-title">状態</h2>
+    <button type="button" class="fo-btn fo-btn-ghost fo-btn-icon fo-btn-sm"
+            data-close="ok" aria-label="閉じる">
+      <span class="fo-i fo-i-close fo-i-sm" aria-hidden="true"></span>
+    </button>
+  </header>
+  <div class="fo-dialog-body" id="status-body"></div>
+  <footer class="fo-dialog-foot">
+    <button type="button" class="fo-btn fo-btn-primary" data-close="ok">閉じる</button>
+  </footer>
 </dialog>
 
-<div id="toast" class="toast" hidden></div>
+<div id="toasts" class="fo-toasts" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

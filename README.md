@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner/banner-dark.svg">
+  <img alt="File Origin — ダウンロードの入手元を、ファイルが動いても追い続ける。" src="assets/banner/banner-light.svg" width="100%">
+</picture>
+
 # File Origin
 
 > ダウンロードしたファイルの **入手元・来歴** を記録し、後から確認できるようにするローカル完結型の OSS。
@@ -784,6 +789,15 @@ File_Origin/
 ├─ gui/                       ○ デスクトップ GUI
 │  ├─ src-tauri/              ○ Tauri バックエンド (bin `fo-gui`)
 │  └─ web/                    ○ フロントエンド（バンドラ無しの静的ファイル）
+│     ├─ tokens.css           ○ 色・寸法（デザインシステムから取り込み。手で直さない）
+│     ├─ components.css       ○ fo- 接頭辞の部品（同上）
+│     ├─ app.css              ○ この画面の組み立てだけ
+│     ├─ app.js               ○ 検索・詳細・取り込み
+│     └─ index.html
+├─ assets/                    ○ 見た目の原本（ここを直してから配る）
+│  ├─ banner/                 ○ README・GitHub 用のバナー
+│  ├─ icon/                   ○ アプリアイコン（Tauri・拡張へ複製）
+│  └─ design-system/          ○ tokens.css / bundle.css / アイコン 29 個
 ├─ extension/                 ○ ブラウザ拡張
 │  ├─ shared/                 ○ 共通ロジック
 │  ├─ chrome/                 ○ MV3
@@ -792,9 +806,12 @@ File_Origin/
 │  ├─ windows/                   WiX / NSIS、タスクスケジューラ登録
 │  └─ linux/                     .deb / .rpm / AppImage、systemd --user unit
 ├─ scripts/
-│  └─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
+│  ├─ arch-guard.sh           ○ アーキテクチャ不変条件の検査（CI と共用）
+│  └─ sync-design-system.sh   ○ デザインシステムを gui/web に取り込む
 ├─ docs/
 │  ├─ adr/                    ○ Architecture Decision Records
+│  ├─ design-system.md        ○ GUI の見た目の決まり
+│  ├─ brand.md                ○ アイコンとバナーの使い方
 │  └─ prior-art.md            ○ 既存 OSS・製品の調査結果
 ├─ .claude/skills/            ○ Claude Code 用のプロジェクト固有 skill
 │  ├─ platform-layer/            OS 固有機能を追加するとき
@@ -995,6 +1012,8 @@ fo host status                 # 登録状況
 | D12 | 監視エンジンの置き場所 | **`fo-watcher` クレートは作らず `fo-app::watch` に置く。** やることは「イベントが来たら `ingest_file` を呼ぶ」で `fo-app` と同じ層。別クレートにしても依存グラフは変わらず、ビルド単位が増えるだけ | ○ 決定 |
 | D13 | 非同期ランタイム | **tokio を使わない。** 仕事は「1 本の監視ループ」と「たまに来る接続」だけで、非同期ランタイムを入れても速くならず依存とビルド時間が増える。std スレッドと `Mutex<Store>` で足りる | ○ 決定 |
 | D14 | GUI のフロントエンド構成 | **バンドラを使わず素の HTML/CSS/JS（`gui/web/`）。** この規模ではフレームワークの利得が無く、npm を挟まない分 `cargo build` だけでビルドが完結する。D5（React 暫定）はこれで置き換え。規模が増えたら見直す | ○ 決定 |
+| D15 | GUI の見た目の出所 | **`assets/design-system/` を唯一の出所にする**（決まりは [docs/design-system.md](docs/design-system.md)）。`gui/web/tokens.css` と `components.css` は `scripts/sync-design-system.sh` が作る取り込み物で、手で直さない。素の CSS（`fo-` 接頭辞）なので D14 のバンドラ無し構成にそのまま乗り、React に移っても同じ className が使える | ○ 決定 |
+| D16 | アイコンの持ち方 | **SVG を `data:` URI にして CSS マスクで塗る。** 単色なので `currentColor` に従い、状態色と同じ変数で動く。ファイルが増えず、外部への取得も起きない。代償は CSP に `img-src 'self' data:` が要ること（マスク画像は `img-src` で判定される）。画像として置きたくなったら `assets/design-system/icons/*.svg` を `gui/web/icons/` に出して `--i-<name>` を差し替える | ○ 決定 |
 
 ---
 

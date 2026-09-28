@@ -1,0 +1,115 @@
+/* File Origin — tokens.css（tokens.json から生成）
+ * 既定は dark。html[data-theme="light"] で light、data-theme が無ければ OS の設定に従う。 */
+:root, [data-theme="dark"] {
+  --bg: #0e1013;
+  --surface: #15181c;
+  --surface-2: #1c2025;
+  --surface-3: #252a31;
+  --line: #272c33;
+  --line-strong: #636c78;
+  --ink: #e4e7eb;
+  --ink-muted: #9ba4af;
+  --accent: #5cb8f2;
+  --accent-soft: #10263a;
+  --on-accent: #06121c;
+  --url: var(--accent);
+  --focus: var(--accent);
+  --ok: #4fcb8d;
+  --ok-soft: #0f2a1d;
+  --warn: #e5b24e;
+  --warn-soft: #2b2210;
+  --danger: #f27b7e;
+  --danger-soft: #331719;
+  --meter-off: #3a414b;
+  --scrim: #000000a1;
+  --shadow-pop: 0 12px 32px -4px #000000b3;
+}
+[data-theme="light"] {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --surface-3: #e2e6eb;
+  --line: #dde1e6;
+  --line-strong: #7f8893;
+  --ink: #14171b;
+  --ink-muted: #56606b;
+  --accent: #0a63ab;
+  --accent-soft: #e1eefa;
+  --on-accent: #ffffff;
+  --url: var(--accent);
+  --focus: var(--accent);
+  --ok: #12703f;
+  --ok-soft: #e0f3e8;
+  --warn: #855700;
+  --warn-soft: #fbf0d6;
+  --danger: #b0261f;
+  --danger-soft: #fbe7e6;
+  --meter-off: #cdd3da;
+  --scrim: #0e101352;
+  --shadow-pop: 0 12px 32px -6px #0e101340;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-2: #eef0f3;
+    --surface-3: #e2e6eb;
+    --line: #dde1e6;
+    --line-strong: #7f8893;
+    --ink: #14171b;
+    --ink-muted: #56606b;
+    --accent: #0a63ab;
+    --accent-soft: #e1eefa;
+    --on-accent: #ffffff;
+    --url: var(--accent);
+    --focus: var(--accent);
+    --ok: #12703f;
+    --ok-soft: #e0f3e8;
+    --warn: #855700;
+    --warn-soft: #fbf0d6;
+    --danger: #b0261f;
+    --danger-soft: #fbe7e6;
+    --meter-off: #cdd3da;
+    --scrim: #0e101352;
+    --shadow-pop: 0 12px 32px -6px #0e101340;
+  }
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-full: 9999px;
+  --control-h: 28px;
+  --control-h-sm: 22px;
+  --toolbar-h: 44px;
+  --statusbar-h: 24px;
+  --sidebar-w: 184px;
+  --row-h: 48px;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "DejaVu Sans Mono", "BIZ UDGothic", "Noto Sans Mono CJK JP", monospace;
+}
+
+/* 型スタイル */
+.display { font: 600 22px/28px var(--font-sans); letter-spacing: -0.01em; }
+.heading { font: 600 18px/24px var(--font-sans); }
+.title { font: 600 15px/20px var(--font-sans); }
+.body { font: 400 13px/20px var(--font-sans); }
+.body-strong { font: 600 13px/20px var(--font-sans); }
+.caption { font: 400 12px/16px var(--font-sans); }
+.label { font: 600 11px/16px var(--font-sans); letter-spacing: 0.06em; }
+.mono-strong { font: 500 13px/20px var(--font-mono); }
+.mono { font: 400 12px/18px var(--font-mono); }
+.mono-small { font: 400 11px/16px var(--font-mono); }
+
+/* IBM Plex Mono（SIL OFL 1.1）を gui/web/fonts/ に同梱したら有効にする
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+*/
