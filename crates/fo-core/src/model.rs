@@ -376,6 +376,61 @@ mod tests {
     }
 
     #[test]
+    fn opens_only_http_and_https() {
+        assert_eq!(
+            browsable_url("https://example.com/a.zip"),
+            Some("https://example.com/a.zip")
+        );
+        assert_eq!(
+            browsable_url("http://example.com/a.zip"),
+            Some("http://example.com/a.zip")
+        );
+        // スキームの大文字小文字は区別しない。
+        assert_eq!(
+            browsable_url("HTTPS://example.com/"),
+            Some("HTTPS://example.com/")
+        );
+        // 前後の空白は落として判定し、落とした形を返す。
+        assert_eq!(
+            browsable_url("  https://example.com/  "),
+            Some("https://example.com/")
+        );
+    }
+
+    #[test]
+    fn refuses_everything_else() {
+        // 記録された URL は配布者が書ける値。許可制で弾く。
+        for bad in [
+            "javascript:alert(1)",
+            "JavaScript://example.com/%0aalert(1)",
+            "file:///C:/Users/you/Downloads/a.zip",
+            "ms-settings:",
+            "data:text/html,<script>1</script>",
+            "about:internet",
+            "mailto:a@example.com",
+            // スキームが無いもの。ホスト名だけ渡して OS に解釈させない。
+            "example.com/a.zip",
+            "//example.com/a.zip",
+            "",
+            "   ",
+            // 中身が無い。
+            "https://",
+            "https://   ",
+        ] {
+            assert_eq!(browsable_url(bad), None, "開いてはいけない: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn refuses_control_characters() {
+        // 改行で引数を割る類の細工。スキームが合っていても通さない。
+        assert_eq!(browsable_url("https://example.com/\nfoo"), None);
+        assert_eq!(browsable_url("https://example.com/\r\nfoo"), None);
+        assert_eq!(browsable_url("https://example.com/\0"), None);
+        assert_eq!(browsable_url("http\n://example.com/"), None);
+    }
+
+    #[test]
     fn handles_unparseable_urls() {
         assert_eq!(host_of(""), None);
         assert_eq!(host_of("https://"), None);
