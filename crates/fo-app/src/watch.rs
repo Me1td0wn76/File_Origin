@@ -110,6 +110,15 @@ impl Pending {
         self.seen.is_empty() && self.vanished.is_empty()
     }
 }
+pub struct Due {
+    pub appeared: Vec<PathBuf>,
+    pub vanished: Vec<PathBuf>,
+}
+impl Due {
+    pub fn is_empty(&self) -> bool {
+        self.appeared.is_empty() && self.vanished.is_empty()
+    }
+}
 
 /// 監視ループを 1 回分進める。
 ///
