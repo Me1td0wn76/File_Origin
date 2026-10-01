@@ -1032,18 +1032,3 @@ els.detail.replaceChildren(detailEmptyNode());
 // 先に検索すると、保存済みの並びが反映されないまま一瞬既定の並びで描画され、
 // 0 件のときに「まだ何も無い」のか「絞り込みすぎ」なのかも言えない。
 Promise.all([refreshStatus(), setupSort()]).then(runSearch);
-
-// TEMP-SHOT: open_url の判定を確認する一時コード。トーストは消さない。撮ったら消す。
-setTimeout(async () => {
-  for (const u of ["https://example.com/", "file:///C:/Users/jyori/Downloads/a.zip",
-                   "javascript:alert(1)", "ms-settings:display"]) {
-    let msg;
-    try { await invoke("open_url", { url: u }); msg = "OK  " + u; }
-    catch (e) { msg = "NG  " + u + "  → " + e; }
-    const t = el("div", "fo-toast");
-    t.dataset.tone = msg.startsWith("OK") ? "ok" : "danger";
-    t.appendChild(icon(msg.startsWith("OK") ? "check" : "alert"));
-    t.append(msg);
-    els.toasts.appendChild(t);
-  }
-}, 2000);
