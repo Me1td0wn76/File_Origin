@@ -261,6 +261,42 @@ fn status(state: State<'_, App>) -> Result<StatusDto, String> {
     })
 }
 
+/// 入手元 URL を既定のブラウザで開く。
+///
+/// **開いてよいかの判定は必ずここを通す。** 記録された URL は配布者が書ける値で
+/// （Zone.Identifier も拡張からの報告も）、画面側だけで弾いても迂回されうる —
+/// `invoke` は WebView から直接呼べる。判定の中身は `fo_core::model::browsable_url`。
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let Some(safe) = fo_core::model::browsable_url(&url) else {
+        return Err(format!(
+            "{} は開けません。ブラウザで開けるのは http と https だけです。",
+            scheme_of(&url)
+        ));
+    };
+    tauri_plugin_opener::open_url(safe, None::<&str>)
+        .map_err(|e| format!("ブラウザを開けません: {e}"))
+}
+
+/// 拒否の理由を伝えるために、スキームだけ取り出す。
+///
+/// URL 全体は信用できない値なので、そのまま画面の文言に混ぜない。
+/// スキームとして妥当な形（RFC 3986 の文字種）でなければ、形を言うだけにする。
+fn scheme_of(url: &str) -> String {
+    let head = url.trim_start();
+    match head.split_once(':') {
+        Some((s, _))
+            if !s.is_empty()
+                && s.len() <= 32
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) =>
+        {
+            format!("`{s}:`")
+        }
+        _ => "この形式".into(),
+    }
+}
+
 /// デーモンを起動する。
 ///
 /// 起動そのものは `fo-app` に任せる。CLI の `fo daemon start` と同じ経路を通す
@@ -377,6 +413,9 @@ fn main() {
     };
 
     tauri::Builder::default()
+        // 外部のアプリを呼ぶ唯一の経路。capabilities で opener:allow-open-url
+        // だけを許可してあり、ファイルやパスを開く権限は与えていない。
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if let Some(w) = app.get_webview_window("main") {
                 // 環境によっては tauri.conf.json の width/height が反映されず、
@@ -411,7 +450,8 @@ fn main() {
             add_origin,
             sort_options,
             daemon_start,
-            daemon_stop
+            daemon_stop,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("GUI を起動できません");

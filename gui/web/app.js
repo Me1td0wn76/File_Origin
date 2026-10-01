@@ -159,6 +159,21 @@ function dirName(p) {
  */
 function urlNode(raw, { withScheme = false, quiet = false } = {}) {
   const span = el("span", quiet ? "fo-url fo-quiet" : "fo-url");
+
+  // Shift+クリックで開く。素のクリックは一覧では行の選択に割り当て済みなので、
+  // 修飾キーで分ける。開けるかどうかの判定は Rust 側がやるので、
+  // ここでは弾かずに投げて、断られたら理由をそのまま出す。
+  if (looksBrowsable(raw)) {
+    span.classList.add("is-openable");
+    span.title = "Shift+クリックで開く";
+  }
+  span.addEventListener("click", (e) => {
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation(); // 一覧では行の選択を兼ねているので飲み込む
+    openUrl(raw);
+  });
+
   let u = null;
   try { u = new URL(raw); } catch (_) { /* 解釈できなければそのまま出す */ }
 
@@ -172,6 +187,27 @@ function urlNode(raw, { withScheme = false, quiet = false } = {}) {
   const rest = `${u.pathname}${u.search}${u.hash}`;
   if (rest && rest !== "/") span.appendChild(el("span", "fo-path", rest));
   return span;
+}
+
+/**
+ * ブラウザで開けそうか。
+ *
+ * **判定の本体は Rust 側**（`fo_core::model::browsable_url`）で、ここは
+ * 「押せる」という手がかりを出すかどうかを決めるだけ。画面側の判定は
+ * 迂回されうるので、ここを緩めても厳しくしても安全性は変わらない。
+ */
+function looksBrowsable(raw) {
+  const u = String(raw || "").trim().toLowerCase();
+  return u.startsWith("http://") || u.startsWith("https://");
+}
+
+async function openUrl(url) {
+  try {
+    await invoke("open_url", { url });
+  } catch (e) {
+    // 断られた理由は Rust 側が持っている。言い換えずそのまま見せる。
+    toast(String(e), "danger");
+  }
 }
 
 /** 確度メーター。4 本のバーの点灯数で高さを示す。 */
@@ -606,6 +642,11 @@ function originNode(o) {
   if (o.url) {
     const a = el("span", "fo-origin-actions");
     a.appendChild(iconBtn("copy", "URL をコピー", () => copyText(o.url, "URL")));
+    // 詳細には場所があるので、修飾キーを知らなくても押せるボタンを置く。
+    // 開けない URL には出さない。押せそうに見えて断られるのが一番困る。
+    if (looksBrowsable(o.url)) {
+      a.appendChild(iconBtn("external", "ブラウザで開く", () => openUrl(o.url)));
+    }
     head.appendChild(a);
   }
   card.appendChild(head);
@@ -945,6 +986,18 @@ els.q.addEventListener("keydown", (e) => {
     if (filters[k]) { filters[k] = null; renderChips(); runSearch(); return; }
   }
 });
+
+// Shift を押している間だけ、開ける URL に下線を出す。
+//
+// 修飾キーを要求する操作は見つけてもらえない。押してみたら目の前で変わる、
+// というのが一番伝わる。title 属性はその後の確認用。
+function setShiftHeld(on) {
+  document.body.classList.toggle("shift-held", on);
+}
+window.addEventListener("keydown", (e) => { if (e.key === "Shift") setShiftHeld(true); });
+window.addEventListener("keyup", (e) => { if (e.key === "Shift") setShiftHeld(false); });
+// 押したまま別の窓へ行くと keyup を取り逃す。
+window.addEventListener("blur", () => setShiftHeld(false));
 
 function dialogOpen() {
   return Boolean(document.querySelector("dialog[open]"));

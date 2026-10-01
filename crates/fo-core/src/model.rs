@@ -166,6 +166,42 @@ pub fn host_of(url: &str) -> Option<String> {
     }
 }
 
+/// ブラウザで開いてよい URL か判定し、開くべき文字列を返す。
+///
+/// **記録された URL は信用できない。** Zone.Identifier はダウンロードした
+/// ファイルに付いてくるデータで、配布する側が任意の文字列を書き込める。
+/// ブラウザ拡張からの報告も同じ。検証せずに OS の「既定のアプリで開く」へ
+/// 渡すと、`javascript:` や OS が登録している任意のカスタムスキーム
+/// （`ms-*` など）を踏ませられる。
+///
+/// そこで **`http` と `https` だけ**を通す。許可制なので、知らないスキームが
+/// 増えても自動的に拒否される。
+///
+/// `file://` も通さない。実データでは入手元の 98% が `file://` で、しかも
+/// 指す先の書庫は既に消えていることが多い。ブラウザで開いても意味がなく、
+/// ファイルマネージャ連携は別の話（別 Issue）。
+///
+/// 画面側だけで弾くと迂回されうるので、**開く直前のここが唯一の関門**。
+pub fn browsable_url(raw: &str) -> Option<&str> {
+    let url = raw.trim();
+
+    // 制御文字が混じっていたら触らない。改行で引数を割る類の細工を避ける。
+    if url.chars().any(|c| c.is_control()) {
+        return None;
+    }
+
+    let (scheme, rest) = url.split_once("://")?;
+    // スキームの大文字小文字は区別しない（RFC 3986）。`HTTPS://` も同じもの。
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return None;
+    }
+    // `https://` だけ、のような中身の無い URL は開かない。
+    if rest.trim().is_empty() {
+        return None;
+    }
+    Some(url)
+}
+
 /// パス履歴の 1 行。ファイルが「いつ・どこにあったか」。
 ///
 /// パスは属性ではなく履歴として持つ（README §10）。移動・リネームのたびに
@@ -337,6 +373,61 @@ mod tests {
             host_of("https://example.com").as_deref(),
             Some("example.com")
         );
+    }
+
+    #[test]
+    fn opens_only_http_and_https() {
+        assert_eq!(
+            browsable_url("https://example.com/a.zip"),
+            Some("https://example.com/a.zip")
+        );
+        assert_eq!(
+            browsable_url("http://example.com/a.zip"),
+            Some("http://example.com/a.zip")
+        );
+        // スキームの大文字小文字は区別しない。
+        assert_eq!(
+            browsable_url("HTTPS://example.com/"),
+            Some("HTTPS://example.com/")
+        );
+        // 前後の空白は落として判定し、落とした形を返す。
+        assert_eq!(
+            browsable_url("  https://example.com/  "),
+            Some("https://example.com/")
+        );
+    }
+
+    #[test]
+    fn refuses_everything_else() {
+        // 記録された URL は配布者が書ける値。許可制で弾く。
+        for bad in [
+            "javascript:alert(1)",
+            "JavaScript://example.com/%0aalert(1)",
+            "file:///C:/Users/you/Downloads/a.zip",
+            "ms-settings:",
+            "data:text/html,<script>1</script>",
+            "about:internet",
+            "mailto:a@example.com",
+            // スキームが無いもの。ホスト名だけ渡して OS に解釈させない。
+            "example.com/a.zip",
+            "//example.com/a.zip",
+            "",
+            "   ",
+            // 中身が無い。
+            "https://",
+            "https://   ",
+        ] {
+            assert_eq!(browsable_url(bad), None, "開いてはいけない: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn refuses_control_characters() {
+        // 改行で引数を割る類の細工。スキームが合っていても通さない。
+        assert_eq!(browsable_url("https://example.com/\nfoo"), None);
+        assert_eq!(browsable_url("https://example.com/\r\nfoo"), None);
+        assert_eq!(browsable_url("https://example.com/\0"), None);
+        assert_eq!(browsable_url("http\n://example.com/"), None);
     }
 
     #[test]

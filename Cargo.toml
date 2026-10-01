@@ -44,6 +44,9 @@ interprocess = "2"
 # GUI。OS 標準の WebView を使う（Windows: WebView2 / Linux: WebKitGTK）。
 tauri = "2"
 tauri-build = "2"
+# 既定のブラウザで URL を開く。Tauri v2 で shell.open が廃止されたため、
+# これが「外部で開く」唯一の経路。開いてよい URL かの判定は fo-core 側で行う。
+tauri-plugin-opener = "2"
 
 # --- OS 固有クレート ---------------------------------------------------
 # これらを依存に書いてよいのは fo-platform だけ。

@@ -21,5 +21,6 @@ fo-ipc = { workspace = true }
 fo-platform = { workspace = true }
 fo-store = { workspace = true }
 tauri = { workspace = true }
+tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
