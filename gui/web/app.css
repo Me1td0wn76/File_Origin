@@ -38,6 +38,18 @@ body { overflow: hidden; } /* スクロールするのはペインの中だけ *
 /* SHA-256 は 8 桁ずつ折り返す。64 桁の 1 本棒は目で追えない。 */
 .fo-facts dd .fo-hash { display: inline; }
 
+/* --- Shift+クリックで開く ------------------------------------------------- */
+
+/* 素の状態では手がかりを出さない。一覧では素のクリックが行の選択なので、
+   常にポインタにすると「押せるのに何も起きない」になる。
+   Shift を押している間だけ、開ける URL が押せる見た目になる。 */
+body.shift-held .fo-url.is-openable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
 /* 来歴の「コピー元」は時刻を持たないので、時刻の桁を詰める。 */
 .fo-tl.is-timeless .fo-tl-item { grid-template-columns: 0 18px minmax(0, 1fr); column-gap: 8px; }
 
