@@ -903,6 +903,7 @@ GUI（`fo-gui`）の 4 つの実行ファイルが動きます。
 | 変更ジャーナル | × | × | 任意の高速化。既定の差分スキャンで代替（[ADR-0005](docs/adr/0005-privileged-features-optional.md)） |
 | IPC / デーモン | ○ 名前付きパイプ | ○ Unix ソケット | コンソール窓なしで常駐 |
 | デーモンの起動・停止 | ○ | ○ | CLI（`fo daemon start`\|`stop`）と GUI の「状態」から。同じ経路 |
+| 入手元をブラウザで開く | ○ | ○ | GUI から Shift+クリック。`http(s)` のみ |
 | Native Messaging | ○ | ○ | ホストとマニフェスト設置。**拡張の実動作は未検証** |
 | GUI | ○ | 未検証 | Linux は CI のビルドのみ |
 
@@ -983,6 +984,7 @@ fo host status                 # 登録状況
 | **Native Messaging** | マニフェストの `allowed_origins` / `allowed_extensions` で拡張 ID を固定 |
 | **拡張機能の権限** | `downloads` と `nativeMessaging` のみ。`<all_urls>` は要求しない |
 | **ファイルの書き換え** | 既定で読み取りのみ。メタデータ書き戻しは明示的なオプトイン（P6） |
+| **記録された URL を開く** | **`http` と `https` だけ**を許可制で通す（`fo_core::model::browsable_url`）。Zone.Identifier も拡張からの報告も**配布する側が任意の文字列を書ける値**で、素通しすると `javascript:` や OS が登録したカスタムスキーム（`ms-*`）を踏ませられる。判定は開く直前の Rust 側で行い、画面側の判定には頼らない。GUI の権限も `opener:allow-open-url` の 1 つだけ |
 | **特権** | **管理者 / root を要求しない。** Windows の USN Journal（要 Administrator）と Linux の `fanotify`（要 `CAP_SYS_ADMIN`）はどちらも **任意の高速化機能**として扱い、既定は差分スキャン |
 | **ブラウザ履歴 DB** | 既定 OFF。有効化時は読み取り専用コピー経由で参照し、ロックを避ける |
 | **GVFS メタデータ** | 既定 OFF。**プライベートブラウジング中の記録を含みうる**ため、読む前に何が読まれるかを明示して同意を取る |
@@ -1014,6 +1016,7 @@ fo host status                 # 登録状況
 | D14 | GUI のフロントエンド構成 | **バンドラを使わず素の HTML/CSS/JS（`gui/web/`）。** この規模ではフレームワークの利得が無く、npm を挟まない分 `cargo build` だけでビルドが完結する。D5（React 暫定）はこれで置き換え。規模が増えたら見直す | ○ 決定 |
 | D15 | GUI の見た目の出所 | **`assets/design-system/` を唯一の出所にする**（決まりは [docs/design-system.md](docs/design-system.md)）。`gui/web/tokens.css` と `components.css` は `scripts/sync-design-system.sh` が作る取り込み物で、手で直さない。素の CSS（`fo-` 接頭辞）なので D14 のバンドラ無し構成にそのまま乗り、React に移っても同じ className が使える | ○ 決定 |
 | D16 | アイコンの持ち方 | **SVG を `data:` URI にして CSS マスクで塗る。** 単色なので `currentColor` に従い、状態色と同じ変数で動く。ファイルが増えず、外部への取得も起きない。代償は CSP に `img-src 'self' data:` が要ること（マスク画像は `img-src` で判定される）。画像として置きたくなったら `assets/design-system/icons/*.svg` を `gui/web/icons/` に出して `--i-<name>` を差し替える | ○ 決定 |
+| D17 | 記録された URL を開く範囲 | **`http` と `https` だけの許可制。** 入手元 URL は配布する側が書ける値なので、拒否リストでは追いつかない（OS が登録するカスタムスキームは環境ごとに違う）。`file://` も通さない — 実データでは入手元の 98% が `file://` で、しかも指す先の書庫は既に消えていることが多く、ブラウザで開いても意味がない。ファイルマネージャ連携は別の話として分ける | ○ 決定 |
 
 ---
 
