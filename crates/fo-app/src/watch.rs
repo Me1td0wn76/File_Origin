@@ -110,28 +110,28 @@ impl Pending {
         self.seen.is_empty() && self.vanished.is_empty()
     }
 }
+
+/// 静穏時間を過ぎ、取り込みを待つパス。`collect` が作り `apply` が消費する。
 pub struct Due {
     pub appeared: Vec<PathBuf>,
     pub vanished: Vec<PathBuf>,
 }
+
 impl Due {
     pub fn is_empty(&self) -> bool {
         self.appeared.is_empty() && self.vanished.is_empty()
     }
 }
 
-/// 監視ループを 1 回分進める。
+/// 監視器からイベントを吸出し、静穏時間を過ぎたものを返す。
 ///
-/// ループ本体をデーモンに持たせず、この関数を繰り返し呼ぶ形にしてある。
-/// 停止要求の確認や他の仕事を挟めるようにするため。
-pub fn tick(
-    platform: &dyn Platform,
-    store: &Store,
+/// store には何も触らせない。
+/// 何もなければロックをとらずに次の周へ進む(Issue # 10)
+pub fn collect(
     watcher: &mut dyn FsWatcher,
     pending: &mut Pending,
-    opts: IngestOptions,
     on_event: &mut dyn FnMut(WatchEvent<'_>),
-) -> Result<()> {
+) -> Result<Due> {
     for event in watcher.poll(POLL_TIMEOUT)? {
         match event {
             FsEvent::Appeared(p) => {
@@ -149,8 +149,18 @@ pub fn tick(
     }
 
     let (appeared, vanished) = pending.due(Instant::now());
+    Ok(Due { appeared, vanished })
+}
 
-    for path in appeared {
+/// 溜まった分を取り込む。store が要るのはここだけ。
+pub fn apply(
+    platform: &dyn Platform,
+    store: &Store,
+    due: Due,
+    opts: IngestOptions,
+    on_event: &mut dyn FnMut(WatchEvent<'_>),
+) -> Result<()> {
+    for path in due.appeared {
         // 静穏時間の間に消えた（一時ファイルだった、すぐ移動された）場合は何もしない。
         let Ok(meta) = std::fs::metadata(&path) else {
             continue;
@@ -176,7 +186,7 @@ pub fn tick(
         }
     }
 
-    for path in vanished {
+    for path in due.vanished {
         // 移動の前半だった場合、静穏時間の間に新しい場所で Appeared が来て
         // 同一識別子で解決されている。ここで実在を再確認して、
         // 本当に消えたものだけ missing にする。
@@ -197,6 +207,25 @@ pub fn tick(
     }
 
     Ok(())
+}
+
+/// 監視ループを 1 回分進める。
+///
+/// ループ本体をデーモンに持たせず、この関数を繰り返し呼ぶ形にしてある。
+/// 停止要求の確認や他の仕事を挟めるようにするため。
+///
+/// 中身は `collect` と `apply` を続けて呼ぶだけ。ロックを必要な間だけ
+/// 取りたい呼び出し側（デーモン）は、両者を直接呼ぶ。
+pub fn tick(
+    platform: &dyn Platform,
+    store: &Store,
+    watcher: &mut dyn FsWatcher,
+    pending: &mut Pending,
+    opts: IngestOptions,
+    on_event: &mut dyn FnMut(WatchEvent<'_>),
+) -> Result<()> {
+    let due = collect(watcher, pending, on_event)?;
+    apply(platform, store, due, opts, on_event)
 }
 
 /// 実体が無いパスの区切りを、その OS の正規の形に揃える。
