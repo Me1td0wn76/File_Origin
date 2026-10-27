@@ -27,7 +27,7 @@ pub use ingest::{ingest_file, IngestOptions, Ingested};
 pub use manual::add_manual_origin;
 pub use scan::{scan_dir, ScanEvent, ScanOptions};
 pub use search::{locate, search};
-pub use watch::{tick, Pending, WatchEvent, collect, apply, Due};
+pub use watch::{apply, collect, tick, Due, Pending, WatchEvent};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

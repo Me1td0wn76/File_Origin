@@ -290,47 +290,56 @@ fn watch_loop(d: &Daemon) {
 
     let mut pending = Pending::default();
     while !d.stopping() {
-        let store = d.store.lock().expect("store mutex");
-        let r = fo_app::tick(
-            d.platform.as_ref(),
-            &store,
-            watcher.as_mut(),
-            &mut pending,
-            d.opts,
-            &mut |ev| match ev {
-                WatchEvent::Ingested {
-                    path,
-                    verdict,
-                    os_origins_recorded,
-                    path_changed,
-                } => {
-                    d.log.log(&format!(
-                        "[{}] {}{}",
-                        label(verdict, path_changed),
-                        path.display(),
-                        if os_origins_recorded > 0 {
-                            format!("  (入手元 {os_origins_recorded} 件)")
-                        } else {
-                            String::new()
-                        }
-                    ));
-                }
-                WatchEvent::MarkedMissing { path } => {
-                    d.log.log(&format!("[見失い] {}", path.display()));
-                }
-                WatchEvent::NeedsRescan => {
-                    d.log
-                        .log("[警告] イベントを取りこぼしました。fo scan で補正してください。");
-                }
-                WatchEvent::Failed { path, error } => {
-                    d.log.log(&format!("[失敗] {}: {error}", path.display()));
-                }
-            },
-        );
-        drop(store);
+        // イベント待ち（最大 250 ms）の間は store を取らない。
+        // 取ったまま待つと IPC スレッドが store を取れず、
+        // `fo daemon status` が数秒待たされる（#10）。
+        // std の Mutex は公平でないので、手放してすぐ取り直す形では解決しない。
+        let r = fo_app::collect(watcher.as_mut(), &mut pending, &mut |ev| {
+            log_watch_event(&d.log, ev)
+        })
+        .and_then(|due| {
+            if due.is_empty() {
+                return Ok(());
+            }
+            let store = d.store.lock().expect("store mutex");
+            fo_app::apply(d.platform.as_ref(), &store, due, d.opts, &mut |ev| {
+                log_watch_event(&d.log, ev)
+            })
+        });
         if let Err(e) = r {
             d.log.log(&format!("[致命] 監視が停止しました: {e}"));
             return;
+        }
+    }
+}
+
+fn log_watch_event(log: &Logger, ev: WatchEvent<'_>) {
+    match ev {
+        WatchEvent::Ingested {
+            path,
+            verdict,
+            os_origins_recorded,
+            path_changed,
+        } => {
+            log.log(&format!(
+                "[{}] {}{}",
+                label(verdict, path_changed),
+                path.display(),
+                if os_origins_recorded > 0 {
+                    format!("  (入手元 {os_origins_recorded} 件)")
+                } else {
+                    String::new()
+                }
+            ));
+        }
+        WatchEvent::MarkedMissing { path } => {
+            log.log(&format!("[見失い] {}", path.display()));
+        }
+        WatchEvent::NeedsRescan => {
+            log.log("[警告] イベントを取りこぼしました。fo scan で補正してください。");
+        }
+        WatchEvent::Failed { path, error } => {
+            log.log(&format!("[失敗] {}: {error}", path.display()));
         }
     }
 }
